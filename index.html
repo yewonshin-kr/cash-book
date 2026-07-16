@@ -1,0 +1,1537 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>가계부 v0.14</title>
+<style>
+:root{
+  --bg:#f5f6f5; --card:#ffffff; --ink:#22262a; --sub:#8b9198; --line:#eceeed;
+  --accent:#4a7c64; --accent-deep:#2e5443; --accent-soft:#eef4f0;
+  --green:#3e8e5f; --red:#d95757; --amber:#c98a2e; --amber-soft:#fbf5e9;
+  --radius:8px; --shadow:0 1px 2px rgba(25,32,28,.05);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:#e2e5e3;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR",sans-serif;color:var(--ink)}
+svg.i{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;display:block}
+/* Galaxy S26 Ultra (CSS 뷰포트 ≈ 412×915) 기준 최적화 */
+#frame{max-width:412px;margin:0 auto;min-height:100dvh;background:var(--bg);position:relative;box-shadow:0 0 40px rgba(0,0,0,.1);display:flex;flex-direction:column}
+header{position:sticky;top:0;z-index:20;background:var(--card);border-bottom:1px solid var(--line);box-shadow:0 1px 4px rgba(25,32,28,.05);padding:calc(14px + env(safe-area-inset-top)) 18px 13px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+header h1{font-size:18px;font-weight:800;letter-spacing:-.3px;display:flex;align-items:center;gap:8px}
+header .back{border:0;background:var(--bg);width:29px;height:29px;border-radius:7px;font-size:15px;color:var(--ink);cursor:pointer}
+.gear{border:0;background:var(--bg);width:33px;height:33px;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--sub)}
+.month-row{display:flex;justify-content:center;align-items:center;gap:16px;padding:10px 0 12px;font-weight:800;font-size:14.5px}
+.month-row button{border:0;background:var(--card);width:27px;height:27px;border-radius:7px;box-shadow:var(--shadow);font-size:13px;color:var(--sub);cursor:pointer}
+main{flex:1;padding:4px 14px 96px;overflow-x:hidden}
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-bottom:10px}
+/* 타이포 하이라키: 페이지 타이틀 18 > 섹션 14.5 > 카드(영역) 타이틀 13.5(잉크) > 행 13~13.5 > 보조 11.5~12.5(그레이) */
+.card h3{font-size:13.5px;color:var(--ink);font-weight:800;letter-spacing:-.2px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.card h3 .sub{font-weight:500}
+.card h3 .more{font-size:12px;color:var(--accent);font-weight:600;cursor:pointer}
+.big-num{font-size:27px;font-weight:800;letter-spacing:-.5px}
+.sub{color:var(--sub);font-size:12.5px}
+.pos{color:var(--green)} .neg{color:var(--red)}
+.bar{height:8px;background:#f0f2f1;border-radius:4px;overflow:hidden;margin:10px 0 6px}
+.bar>i{display:block;height:100%;border-radius:4px;background:var(--accent);transition:width .5s}
+.bar.warn>i{background:var(--amber)} .bar.over>i{background:var(--red)}
+.minibar{height:4px;background:#f0f2f1;border-radius:2px;margin-top:4px;overflow:hidden}
+.minibar>i{display:block;height:100%;border-radius:2px;background:var(--accent)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.grid2 .card{margin:0}
+/* checklist */
+.check{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.check:last-child{border-bottom:0}
+.check .st{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;font-weight:800}
+.check.done .st{background:var(--accent-soft);color:var(--accent)}
+.check.todo .st{background:#f0f2f1;color:#b8bdc2}
+.check.warn .st{background:var(--amber-soft);color:var(--amber)}
+.check .tx{flex:1;font-size:13.5px;font-weight:600}
+.check.done .tx{color:var(--sub);text-decoration:line-through;text-decoration-color:#ccd1ce}
+.check .hint{font-size:11.5px;color:var(--sub);font-weight:500}
+.check .goarr{color:#c5cac7;font-size:14px}
+/* chips */
+.chip{display:inline-block;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;vertical-align:1px}
+.chip.wc{background:#f4efe4;color:#a07a2c} .chip.wp{background:var(--accent-soft);color:var(--accent)} .chip.ry{background:#e9edf4;color:#5b6b8c}
+.filters{display:flex;gap:7px;overflow-x:auto;padding:2px 2px 10px;scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.fchip{flex-shrink:0;border:1px solid var(--line);background:var(--card);border-radius:7px;padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--sub);cursor:pointer}
+.fchip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.fchip.alert{border-color:var(--amber);color:var(--amber)}
+.fchip.alert.on{background:var(--amber);color:#fff}
+/* data table */
+.tablewrap{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);overflow-x:auto;margin-bottom:10px}
+table.data{border-collapse:collapse;width:100%;min-width:620px;font-size:12.5px}
+table.data th{font-size:11px;color:var(--sub);font-weight:700;text-align:left;padding:10px;border-bottom:1.5px solid var(--line);white-space:nowrap;background:#fafbfa;cursor:pointer;user-select:none}
+table.data th.num{text-align:right}
+table.data td{padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:middle}
+table.data tr:last-child td{border-bottom:0}
+table.data td.num{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+table.data td.desc{max-width:170px;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+table.data tr.unclass{background:var(--amber-soft)}
+table.data tr.dup td{opacity:.55}
+select.catsel{border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-size:11.5px;background:#fff;font-family:inherit;max-width:120px;color:var(--ink)}
+tr.unclass select.catsel{border-color:var(--amber);background:#fffdf6}
+.tfoot{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;font-size:12.5px;color:var(--sub);font-weight:600;border-top:1.5px solid var(--line)}
+.toolbar{display:flex;gap:7px;margin-bottom:10px}
+.toolbar button{border:1px solid var(--line);background:var(--card);border-radius:7px;padding:8px 12px;font-size:12px;font-weight:700;color:var(--ink);cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px}
+.toolbar button svg.i{width:14px;height:14px}
+.toolbar .primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;border-radius:8px;background:var(--amber);color:#fff;font-size:9.5px;font-weight:800;padding:0 4px}
+/* segmented */
+.seg{display:flex;background:#e9ebe9;border-radius:8px;padding:3px;margin-bottom:12px}
+.seg button{flex:1;border:0;background:transparent;padding:8px 4px;border-radius:6px;font-size:12.5px;font-weight:700;color:var(--sub);cursor:pointer;font-family:inherit}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+/* settle rows */
+.setrow{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.setrow:last-child{border-bottom:0}
+.setrow .lbl{color:var(--ink);font-weight:600}
+.setrow .lbl small{display:block;color:var(--sub);font-weight:500;font-size:11.5px;margin-top:1px}
+.setrow .val{font-weight:700}
+.setrow.head{font-weight:800;font-size:14.5px}
+.setrow.indent{padding-left:14px;font-size:13px}
+.setrow.indent .lbl{color:var(--sub);font-weight:500}
+.setrow.indent .val{font-weight:600}
+.hl{background:var(--accent-soft);border-radius:7px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.hl b{font-size:14px} .hl .v{font-size:16px;font-weight:800;color:var(--accent-deep)}
+/* chart */
+.chart{display:flex;align-items:flex-end;gap:6px;height:105px;padding-top:8px}
+.chart .col{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;justify-content:flex-end}
+.chart .col i{width:100%;max-width:26px;border-radius:3px 3px 1px 1px;background:var(--accent);display:block}
+.chart .col span{font-size:10px;color:var(--sub);font-weight:600}
+.chart .col .cv{font-size:9px;font-weight:700;color:var(--sub);letter-spacing:-.2px;white-space:nowrap}
+.chart .col{cursor:pointer}
+/* asset */
+.acct{padding:12px 0;border-bottom:1px solid var(--line)}
+.acct:last-child{border-bottom:0}
+.acct .top{display:flex;justify-content:space-between;align-items:baseline}
+.acct .top b{font-size:13.5px;font-weight:700}
+.acct .top .rate{font-size:12.5px;font-weight:800}
+.acct .btm{display:flex;justify-content:space-between;margin-top:3px;font-size:12px;color:var(--sub)}
+.tag{font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;background:#f0f2f1;color:var(--sub);margin-left:6px;vertical-align:1px}
+.tag.gg{background:var(--accent-soft);color:var(--accent)}
+.tag.rr{background:#f6eded;color:#b06060}
+.pre{color:var(--amber);font-weight:700;font-size:12px;background:var(--amber-soft);padding:2px 7px;border-radius:5px}
+.workrow{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.workrow:last-child{border-bottom:0}
+.workrow .wi{flex:1;min-width:0}
+.workrow .goarr{color:#c5cac7}
+/* info rows */
+.inforow{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+.inforow:last-child{border-bottom:0}
+.inforow .k{color:var(--sub);font-weight:500}
+.inforow .v{font-weight:700}
+/* bottom nav */
+nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:412px;background:#fff;border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:9px 4px calc(9px + env(safe-area-inset-bottom));z-index:30}
+nav button{position:relative;border:0;background:transparent;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px;font-weight:700;color:#b3b8bc;cursor:pointer;width:60px}
+nav button.on{color:var(--accent-deep)}
+/* sheet */
+.overlay{position:fixed;inset:0;background:rgba(20,26,22,.45);z-index:40;display:none}
+.overlay.show{display:block}
+.sheet{position:fixed;bottom:0;left:50%;transform:translate(-50%,105%);width:100%;max-width:412px;background:var(--card);border-radius:14px 14px 0 0;z-index:50;padding:18px 18px calc(18px + env(safe-area-inset-bottom));transition:transform .28s cubic-bezier(.3,1,.4,1);max-height:92dvh;overflow-y:auto}
+.sheet.show{transform:translate(-50%,0)}
+.sheet .grab{width:36px;height:4px;border-radius:2px;background:#dde0de;margin:0 auto 14px}
+.sheet h2{font-size:15.5px;font-weight:800;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
+.sheet h2 .close{border:0;background:#f0f2f1;width:27px;height:27px;border-radius:7px;font-size:12px;color:var(--sub);cursor:pointer}
+.frow{display:flex;gap:9px;margin-bottom:9px}
+.frow input,.frow select{flex:1;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;font-size:13.5px;font-family:inherit;background:var(--card);min-width:0;color:var(--ink)}
+.frow input:focus,.frow select:focus{outline:none;border-color:var(--accent)}
+.flabel{font-size:11.5px;font-weight:700;color:var(--sub);margin:4px 2px 6px}
+.save-btn{width:100%;border:0;background:var(--accent);color:#fff;font-size:14.5px;font-weight:800;padding:13px;border-radius:8px;cursor:pointer;font-family:inherit}
+.save-btn:disabled{background:#c9cdc9}
+.save-btn.ghost{background:transparent;color:var(--red);padding:9px}
+.upload-zone{border:1.5px dashed #c8cec9;border-radius:8px;padding:24px 16px;text-align:center;color:var(--sub);font-size:12.5px;font-weight:600;margin-bottom:10px;cursor:pointer;background:#fafbfa}
+.upload-zone b{display:block;font-size:14px;color:var(--ink);margin-bottom:4px}
+textarea.paste{width:100%;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;font-family:inherit;min-height:76px;resize:vertical;margin-bottom:10px}
+/* batch rows */
+.batchrow{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.batchrow:last-child{border-bottom:0}
+.batchrow .bn{flex:1;font-size:13px;font-weight:600;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.batchrow .bp{font-size:10.5px;color:var(--sub);white-space:nowrap}
+.batchrow input{width:96px;border:1.5px solid var(--line);border-radius:7px;padding:8px 9px;font-size:13px;text-align:right;font-family:inherit}
+.batchrow input:focus{outline:none;border-color:var(--accent)}
+.batchrow select.mini{border:1px solid var(--line);border-radius:6px;padding:6px 4px;font-size:11px;font-family:inherit;color:var(--sub);background:#fff}
+.net{font-size:10.5px;color:var(--accent);font-weight:700;width:70px;text-align:right;white-space:nowrap}
+.note{font-size:11.5px;color:var(--sub);text-align:center;padding:12px 20px;line-height:1.6}
+.toast{position:fixed;bottom:92px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:12.5px;font-weight:600;padding:10px 16px;border-radius:8px;z-index:60;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1}
+.stat3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}
+.stat3 .card{margin:0;padding:12px}
+.stat3 .card .sub{font-size:10.5px}
+.stat3 .card b{font-size:14px;display:block;margin-top:3px;letter-spacing:-.3px}
+.stat3 .card.em{background:var(--accent-soft)}
+.stat3 .card.em .sub{color:var(--accent)}
+.stat3 .card.em b{color:var(--accent-deep)}
+.hero{background:var(--accent-deep);color:#fff}
+.hero h3{color:#a8c4b5!important}
+.hero h3.big{font-size:16px;color:#fff!important;margin-bottom:12px}
+/* 홈 섹션 타이틀 */
+.sect{display:flex;justify-content:space-between;align-items:baseline;font-size:14.5px;font-weight:800;letter-spacing:-.3px;margin:20px 6px 8px}
+.sect .more{font-size:12px;color:var(--accent);font-weight:600;cursor:pointer}
+.sect .sub{font-weight:500}
+.hero .big-num{color:#fff}
+.hero .sub{color:#a8c4b5}
+/* 히어로 내부 3분할 통계 */
+.hstats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.hstats .hs span{display:block;color:#a8c4b5;font-size:10.5px;font-weight:700}
+.hstats .hs b{display:block;color:#fff;font-size:14px;margin-top:4px;letter-spacing:-.3px}
+/* 히어로 내부 요약 행 */
+.hrow{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.1);font-size:13.5px}
+.hrow:last-child{border-bottom:0}
+.hrow span{color:#a8c4b5;font-weight:600}
+.hrow b{color:#fff;font-weight:700}
+.hrow b.up{color:#8fd4ac}
+.hrow.dim span{color:#7d998b;font-weight:500}
+.hrow.dim b{color:#9db8ab;font-weight:500}
+.cico{width:26px;height:26px;border-radius:6px;background:var(--accent-soft);color:var(--accent);display:inline-flex;align-items:center;justify-content:center;margin-right:8px;flex-shrink:0;vertical-align:middle}
+.cico svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+</style>
+</head>
+<body>
+<div id="frame">
+  <header id="header"></header>
+  <main id="main"></main>
+  <nav id="nav"></nav>
+</div>
+<div class="overlay" id="overlay" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet"></div>
+<div class="toast" id="toast"></div>
+
+<script src="config.js"></script>
+<script>
+/* ============ 아이콘 (원톤 SVG) ============ */
+const IC={
+ home:'<svg class="i" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>',
+ list:'<svg class="i" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>',
+ chart:'<svg class="i" viewBox="0 0 24 24"><path d="M4 20V10M11 20V4M18 20v-7"/><path d="M2 20h20"/></svg>',
+ trend:'<svg class="i" viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',
+ pen:'<svg class="i" viewBox="0 0 24 24"><path d="M16.5 3.5l4 4L7 21H3v-4L16.5 3.5z"/></svg>',
+ gear:'<svg class="i" viewBox="0 0 24 24"><path d="M4 8h10M18 8h2M4 16h2M10 16h10"/><circle cx="16" cy="8" r="2"/><circle cx="8" cy="16" r="2"/></svg>',
+ up:'<svg class="i" viewBox="0 0 24 24"><path d="M12 17V5M6 11l6-6 6 6"/><path d="M4 21h16"/></svg>',
+ plus:'<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+ dl:'<svg class="i" viewBox="0 0 24 24"><path d="M12 5v12M6 11l6 6 6-6"/><path d="M4 21h16"/></svg>',
+};
+/* 카테고리 아이콘 (원톤) */
+const CI={
+ '외식/배달':'<path d="M4 13a8 8 0 0016 0H4z"/><path d="M12 5v3M8 6l1 2M16 6l-1 2"/>',
+ '카페':'<path d="M5 8h11v6a4 4 0 01-4 4H9a4 4 0 01-4-4V8z"/><path d="M16 9h2a2 2 0 010 4h-2"/>',
+ '식료품':'<path d="M5 5h2l2 11h9l2-8H8"/><circle cx="10" cy="20" r="1.3"/><circle cx="17" cy="20" r="1.3"/>',
+ '교통비':'<path d="M5 17l1-5 2-3h8l2 3 1 5z"/><path d="M7 17v2M17 17v2"/>',
+ '생활용품':'<path d="M5 9h14l-1.5 11h-11z"/><path d="M9 9a3 3 0 016 0"/>',
+ '옷/뷰티':'<path d="M8 4l4 3 4-3 4 4-3 2v10H7V10L4 8z"/>',
+ '컨텐츠':'<path d="M5 4h13v16H5z"/><path d="M9 4v16"/>',
+ '티켓/굿즈':'<path d="M4 8h16v3a2 2 0 000 4v3H4v-3a2 2 0 000-4z"/><path d="M12 9v9" stroke-dasharray="2 2"/>',
+ 'e스포츠':'<path d="M7 9h10l2 7a2 2 0 01-3.5 1.5L14 15h-4l-1.5 2.5A2 2 0 015 16z"/><path d="M9 12h3M10.5 10.5v3"/>',
+ '관리비':'<path d="M6 21V5h8v16M14 9h4v12"/><path d="M9 8h2M9 12h2M9 16h2"/>',
+ '통신비':'<rect x="8" y="3" width="8" height="18" rx="2"/><path d="M11 18h2"/>',
+ '가스비':'<path d="M12 3s5 5 5 10a5 5 0 01-10 0c0-3 2-5 3-7 0 2 2 3 2 3z"/>',
+ '자동차':'<path d="M5 16l1-5 2-3h8l2 3 1 5z"/><circle cx="8" cy="18" r="1.3"/><circle cx="16" cy="18" r="1.3"/>',
+ '공부':'<path d="M16.5 3.5l4 4L7 21H3v-4L16.5 3.5z"/>',
+ '기타':'<path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8"/>',
+ '인세 지출':'<path d="M16.5 3.5l4 4L7 21H3v-4L16.5 3.5z"/>',
+};
+const cico=k=>`<span class="cico"><svg viewBox="0 0 24 24">${CI[k]||CI['기타']}</svg></span>`;
+
+/* ============ 목데이터 ============ */
+const fmt=n=>(n<0?'-':'')+Math.abs(Math.round(n)).toLocaleString('ko-KR');
+const CATS=[
+ {name:'외식/배달',short:'외식/배달',budget:300000},
+ {name:'카페(커피, 디저트)',short:'카페',budget:100000},
+ {name:'식료품(마트,편의점)',short:'식료품',budget:300000},
+ {name:'교통비',short:'교통비',budget:50000},
+ {name:'생활용품(다이소,온라인)',short:'생활용품',budget:50000},
+ {name:'옷/화장품/신발/가방 등',short:'옷/뷰티',budget:100000},
+ {name:'컨텐츠(음악,책,웹툰,e-book)',short:'컨텐츠',budget:30000},
+ {name:'티켓(영화,공연,전시)+굿즈',short:'티켓/굿즈',budget:50000},
+ {name:'e스포츠(티켓,구독,굿즈 등)',short:'e스포츠',budget:30000},
+ {name:'관리비',short:'관리비',budget:200000},
+ {name:'통신비',short:'통신비',budget:100000},
+ {name:'가스비',short:'가스비',budget:15000},
+ {name:'자동차(주유, 하이패스 등)',short:'자동차',budget:50000},
+ {name:'공부(교재,시험비,학원 등)',short:'공부',budget:0},
+ {name:'세금',short:'세금',budget:0},
+ {name:'기타',short:'기타',budget:0},
+ {name:'인세 지출',short:'인세 지출',budget:0}, /* 인세 통장에서 나가는 지출 — 생활비 합계에서 제외 */
+];
+const catShort=n=>{const c=CATS.find(x=>x.name===n);return c?c.short:'—';};
+
+let TXNS=[{"id": 1, "date": "2026-01-31", "desc": "씨유(CU) 수원역한양점", "amount": 2800, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 2, "date": "2026-01-30", "desc": "보드게임카페 레드버튼 서현점", "amount": 10100, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 3, "date": "2026-01-30", "desc": "AK PLAZA AKPLAZA 식", "amount": 12900, "category": "외식/배달", "welfare": "복지_카드", "memo": ""}, {"id": 4, "date": "2026-01-30", "desc": "투썸플레이스 서현중앙점", "amount": 6200, "category": "카페(커피, 디저트)", "welfare": "복지_카드", "memo": ""}, {"id": 5, "date": "2026-01-29", "desc": "네이버페이 네이버(양말)", "amount": 6900, "category": "옷/화장품/신발/가방 등", "welfare": "복지_카드", "memo": ""}, {"id": 6, "date": "2026-01-27", "desc": "아파트관리비_12월수원역한라비발디퍼스", "amount": 189650, "category": "관리비", "welfare": "", "memo": ""}, {"id": 7, "date": "2026-01-26", "desc": "SSG.COM", "amount": 40900, "category": "식료품(마트,편의점)", "welfare": "복지_카드", "memo": ""}, {"id": 8, "date": "2026-01-25", "desc": "한국철도공사_간편", "amount": 2600, "category": "교통비", "welfare": "", "memo": ""}, {"id": 9, "date": "2026-01-24", "desc": "한국철도공사_간편", "amount": 2700, "category": "교통비", "welfare": "", "memo": ""}, {"id": 10, "date": "2026-01-21", "desc": "롯데쇼핑(주)타임 마츠노하나(델/특/", "amount": 13800, "category": "외식/배달", "welfare": "복지_카드", "memo": ""}, {"id": 11, "date": "2026-01-21", "desc": "씨제이푸드빌(주) 뚜레쥬르 카페서현역점", "amount": 11250, "category": "외식/배달", "welfare": "복지_카드", "memo": ""}, {"id": 12, "date": "2026-01-21", "desc": "에스케이브로드밴드주식회사", "amount": 39600, "category": "통신비", "welfare": "복지_카드", "memo": ""}, {"id": 13, "date": "2026-01-17", "desc": "파스쿠찌 수원역", "amount": 17200, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 14, "date": "2026-01-16", "desc": "카카오_택시_0", "amount": 8600, "category": "교통비", "welfare": "", "memo": ""}, {"id": 15, "date": "2026-01-16", "desc": "씨유(CU) 수원역한양점", "amount": 1900, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 16, "date": "2026-01-16", "desc": "카카오_택시_선승인", "amount": 8800, "category": "교통비", "welfare": "", "memo": ""}, {"id": 17, "date": "2026-01-16", "desc": "카카오_택시_선승인", "amount": -8800, "category": "교통비", "welfare": "", "memo": ""}, {"id": 18, "date": "2026-01-16", "desc": "삼천리도시가스", "amount": 13320, "category": "가스비", "welfare": "", "memo": ""}, {"id": 19, "date": "2026-01-15", "desc": "씨제이올리브영(주)롯데몰수원점", "amount": 8000, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 20, "date": "2026-01-15", "desc": "롯데쇼핑(주)타임 만석장(자)", "amount": 29800, "category": "외식/배달", "welfare": "복지_카드", "memo": ""}, {"id": 21, "date": "2026-01-14", "desc": "옥된장(서현점)", "amount": 11000, "category": "외식/배달", "welfare": "복지_카드", "memo": ""}, {"id": 22, "date": "2026-01-11", "desc": "에스에스지닷컴", "amount": 41700, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 23, "date": "2026-01-11", "desc": "에스에스지닷컴", "amount": -41700, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 24, "date": "2026-01-10", "desc": "롯데쇼핑(주)타임 자라(자)", "amount": 37900, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 25, "date": "2026-01-10", "desc": "카페레퓨즈(cafe REFUGE)", "amount": 5500, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 26, "date": "2026-01-10", "desc": "멘야산다이메", "amount": 9500, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 27, "date": "2026-01-09", "desc": "LGU+  통신", "amount": 36130, "category": "통신비", "welfare": "", "memo": ""}, {"id": 28, "date": "2026-01-08", "desc": "스타벅스코리아", "amount": 5200, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 29, "date": "2026-01-08", "desc": "AK PLAZA 수원점", "amount": 3300, "category": "외식/배달", "welfare": "복지_카드", "memo": ""}, {"id": 30, "date": "2026-01-08", "desc": "AK PLAZA 수원점", "amount": 8000, "category": "외식/배달", "welfare": "복지_카드", "memo": ""}, {"id": 31, "date": "2026-01-08", "desc": "참플란트치과의원", "amount": 18200, "category": "기타", "welfare": "", "memo": ""}, {"id": 32, "date": "2026-01-07", "desc": "부성초밥", "amount": 14000, "category": "외식/배달", "welfare": "복지_카드", "memo": ""}, {"id": 33, "date": "2026-01-07", "desc": "카레모리", "amount": 14500, "category": "외식/배달", "welfare": "복지_카드", "memo": ""}, {"id": 34, "date": "2026-01-07", "desc": "라인프렌즈 강남점", "amount": 2400, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 35, "date": "2026-01-05", "desc": "위대한상상", "amount": 19863, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 36, "date": "2026-01-05", "desc": "아시아나항공(BSP)", "amount": 411900, "category": "인세 지출", "welfare": "", "memo": ""}, {"id": 37, "date": "2026-01-05", "desc": "주식회사 놀유니버스", "amount": 10000, "category": "인세 지출", "welfare": "", "memo": ""}, {"id": 38, "date": "2026-01-03", "desc": "다우데이타", "amount": 48000, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "복지_카드", "memo": ""}, {"id": 39, "date": "2026-01-03", "desc": "SSG.COM", "amount": 50246, "category": "식료품(마트,편의점)", "welfare": "복지_카드", "memo": ""}, {"id": 40, "date": "2026-01-01", "desc": "이마트24 R계산미래점", "amount": 5800, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 41, "date": "2026-01-31", "desc": "대성사우나", "amount": 13000, "category": "기타", "welfare": "", "memo": ""}, {"id": 42, "date": "2026-01-30", "desc": "우정사업본부(우체국)", "amount": 3880, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 43, "date": "2026-01-30", "desc": "리더스코스메틱 상자사업부", "amount": 900, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 44, "date": "2026-01-30", "desc": "미아리우동집 서현점", "amount": 10500, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 45, "date": "2026-01-29", "desc": "더베이크 홈씨씨점", "amount": 5000, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 46, "date": "2026-01-28", "desc": "라인프렌즈 강남점", "amount": 3300, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 47, "date": "2026-01-28", "desc": "라인프렌즈 강남점", "amount": 48900, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 48, "date": "2026-01-27", "desc": "더베이크 홈씨씨점", "amount": 3400, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 49, "date": "2026-01-26", "desc": "SK 세븐모바일 자동납부/에스케이텔링크주?", "amount": 18900, "category": "통신비", "welfare": "", "memo": ""}, {"id": 50, "date": "2026-01-26", "desc": "씨유(CU) 수원역한양점", "amount": 1700, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 51, "date": "2026-01-26", "desc": "원카페", "amount": 3000, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 52, "date": "2026-01-26", "desc": "롯데쇼핑(주)롯데마트수원점", "amount": 3990, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 53, "date": "2026-01-26", "desc": "코른베르그 과자점", "amount": 11300, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 54, "date": "2026-01-26", "desc": "(학)성빈센트병원(무인수납)", "amount": 22800, "category": "기타", "welfare": "", "memo": ""}, {"id": 55, "date": "2026-01-25", "desc": "문화비_티켓링크_PAYCO", "amount": 132000, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 56, "date": "2026-01-25", "desc": "롯데리아수원역사점", "amount": 6900, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 57, "date": "2026-01-25", "desc": "미쓰잭슨 주식회사 (MS. JACKSON. INC.)", "amount": 16000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 58, "date": "2026-01-25", "desc": "렌토커피", "amount": 10500, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 59, "date": "2026-01-25", "desc": "굿즈", "amount": 12000, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 60, "date": "2026-01-20", "desc": "나이트몰", "amount": 81910, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 61, "date": "2026-01-19", "desc": "부동산 등기", "amount": 700, "category": "기타", "welfare": "", "memo": ""}, {"id": 62, "date": "2026-01-17", "desc": "화장품", "amount": 40240, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 63, "date": "2026-01-16", "desc": "AK PLAZA(수원점)", "amount": 13500, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 64, "date": "2026-01-16", "desc": "AK PLAZA(수원점)", "amount": 14500, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 65, "date": "2026-01-16", "desc": "가까운성모약국", "amount": 6200, "category": "기타", "welfare": "", "memo": ""}, {"id": 66, "date": "2026-01-16", "desc": "(학)성빈센트병원(무인수납)", "amount": 60400, "category": "기타", "welfare": "", "memo": ""}, {"id": 67, "date": "2026-01-07", "desc": "호텔스닷컴", "amount": 561810, "category": "인세 지출", "welfare": "", "memo": ""}, {"id": 68, "date": "2026-01-05", "desc": "(학)성빈센트병원(무인수납)", "amount": 10100, "category": "기타", "welfare": "", "memo": ""}, {"id": 69, "date": "2026-01-05", "desc": "(학)성빈센트병원", "amount": 26400, "category": "기타", "welfare": "", "memo": ""}, {"id": 70, "date": "2026-01-02", "desc": "교통요금", "amount": 27600, "category": "교통비", "welfare": "", "memo": ""}, {"id": 71, "date": "2026-01-28", "desc": "짬뽕", "amount": 14775, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 72, "date": "2026-01-23", "desc": "돈카스", "amount": 14491, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 73, "date": "2026-01-22", "desc": "분식", "amount": 16188, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 74, "date": "2026-01-20", "desc": "바닐라라떼", "amount": 12249, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 75, "date": "2026-01-15", "desc": "카페라떼", "amount": 17011, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 76, "date": "2026-01-13", "desc": "소금구이", "amount": 21773, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 77, "date": "2026-01-12", "desc": "롯데리아", "amount": 14531, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 78, "date": "2026-01-11", "desc": "바지", "amount": 21820, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 79, "date": "2026-01-11", "desc": "마켓컬리", "amount": 58734, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 80, "date": "2026-01-11", "desc": "더단백", "amount": 25900, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 81, "date": "2026-01-10", "desc": "짬뽕", "amount": 17390, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 82, "date": "2026-01-07", "desc": "스포티파이", "amount": 5900, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 83, "date": "2026-01-05", "desc": "족발", "amount": 12345, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 84, "date": "2026-02-25", "desc": "회독 jlpt 구매", "amount": 22000, "category": "공부(교재,시험비,학원 등)", "welfare": "", "memo": ""}, {"id": 85, "date": "2026-02-24", "desc": "아파트관리비_01월수원역한라비발디퍼스", "amount": 226900, "category": "관리비", "welfare": "", "memo": ""}, {"id": 86, "date": "2026-02-23", "desc": "에스케이브로드밴드주식회사", "amount": 39600, "category": "통신비", "welfare": "", "memo": ""}, {"id": 87, "date": "2026-02-13", "desc": "롯데시네마 수원_온라인 티켓", "amount": 22000, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 88, "date": "2026-02-13", "desc": "AK PLAZA 수원점", "amount": 18500, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 89, "date": "2026-02-13", "desc": "AK PLAZA 수원점", "amount": 22550, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 90, "date": "2026-02-13", "desc": "가까운성모약국", "amount": 6200, "category": "기타", "welfare": "", "memo": ""}, {"id": 91, "date": "2026-02-13", "desc": "(학)성빈센트병원(무인수납)", "amount": 60400, "category": "기타", "welfare": "", "memo": ""}, {"id": 92, "date": "2026-02-13", "desc": "삼천리도시가스", "amount": 16510, "category": "가스비", "welfare": "", "memo": ""}, {"id": 93, "date": "2026-02-11", "desc": "부성초밥", "amount": 9000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 94, "date": "2026-02-11", "desc": "미아리우동집 서현점", "amount": 7500, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 95, "date": "2026-02-11", "desc": "우정사업본부(우체국)", "amount": 3880, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 96, "date": "2026-02-11", "desc": "라인프렌즈 강남점", "amount": 700, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 97, "date": "2026-02-11", "desc": "11번가(리디 상품권)", "amount": 48000, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 98, "date": "2026-02-09", "desc": "LGU+  통신", "amount": 36130, "category": "통신비", "welfare": "", "memo": ""}, {"id": 99, "date": "2026-02-08", "desc": "AK PLAZA 수원점", "amount": 6800, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 100, "date": "2026-02-08", "desc": "AK PLAZA 수원점", "amount": 12400, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 101, "date": "2026-02-08", "desc": "주식회사 아성다이소", "amount": 13000, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 102, "date": "2026-02-07", "desc": "(주) 베드포드커피로스터스", "amount": 10900, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 103, "date": "2026-02-07", "desc": "레드북 굿즈", "amount": 28100, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 104, "date": "2026-02-05", "desc": "다우데이타", "amount": 49800, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 105, "date": "2026-02-03", "desc": "수원닭매운탕", "amount": 9000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 106, "date": "2026-02-03", "desc": "미니헤어", "amount": 18000, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 107, "date": "2026-02-28", "desc": "버틀러 수원역점", "amount": 6000, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 108, "date": "2026-02-27", "desc": "교통요금", "amount": 15500, "category": "교통비", "welfare": "", "memo": ""}, {"id": 109, "date": "2026-02-27", "desc": "교통요금", "amount": 3300, "category": "교통비", "welfare": "", "memo": ""}, {"id": 110, "date": "2026-02-27", "desc": "네이버페이_요기요 외식", "amount": 8532, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 111, "date": "2026-02-25", "desc": "북촌손만두(서현점)", "amount": 11000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 112, "date": "2026-02-25", "desc": "주식회사 아성다이소", "amount": 2000, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 113, "date": "2026-02-25", "desc": "AK플라자 분당점", "amount": 23500, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 114, "date": "2026-02-24", "desc": "SK 세븐모바일 자동납부/에스케이텔링크주?", "amount": 12100, "category": "통신비", "welfare": "", "memo": ""}, {"id": 115, "date": "2026-02-23", "desc": "롯데리아수원역사점", "amount": 10200, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 116, "date": "2026-02-23", "desc": "보험료 청구", "amount": 1000, "category": "기타", "welfare": "", "memo": ""}, {"id": 117, "date": "2026-02-23", "desc": "(학)성빈센트병원(무인수납)", "amount": 22800, "category": "기타", "welfare": "", "memo": ""}, {"id": 118, "date": "2026-02-22", "desc": "휩드", "amount": 13300, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 119, "date": "2026-02-22", "desc": "네이버페이(마트)", "amount": 55800, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 120, "date": "2026-02-22", "desc": "다우데이타", "amount": 84000, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 121, "date": "2026-02-21", "desc": "롯데쇼핑(주)롯데마트수원점", "amount": 3000, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 122, "date": "2026-02-20", "desc": "네이버페이_요기요 외식", "amount": 13794, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 123, "date": "2026-02-20", "desc": "버틀러 수원역점", "amount": 8900, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 124, "date": "2026-02-19", "desc": "네이버페이(청소기 잔액)", "amount": 32366, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 125, "date": "2026-02-19", "desc": "네이버페이_요기요 외식", "amount": 14111, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 126, "date": "2026-02-16", "desc": "다이소 경인교대역점", "amount": 1000, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 127, "date": "2026-02-16", "desc": "코레일유통주식회사(수원역)", "amount": 78000, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 128, "date": "2026-02-16", "desc": "예스24 포인트 충전", "amount": 50000, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 129, "date": "2026-02-15", "desc": "자동결제", "amount": 8500, "category": "e스포츠(티켓,구독,굿즈 등)", "welfare": "", "memo": ""}, {"id": 130, "date": "2026-02-14", "desc": "네이버페이_요기요 외식", "amount": 13784, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 131, "date": "2026-02-01", "desc": "네이버페이(곶감말이)", "amount": 35900, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 132, "date": "2026-02-19", "desc": "청소기_포인트 사용", "amount": 432534, "category": "생활용품(다이소,온라인)", "welfare": "복지_포인트", "memo": ""}, {"id": 133, "date": "2026-02-15", "desc": "스팀 게임_화산의 딸", "amount": 8500, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "복지_포인트", "memo": ""}, {"id": 134, "date": "2026-02-08", "desc": "코코도르_디퓨저", "amount": 19710, "category": "생활용품(다이소,온라인)", "welfare": "복지_포인트", "memo": ""}, {"id": 135, "date": "2026-02-07", "desc": "요기요 치킨", "amount": 20320, "category": "외식/배달", "welfare": "복지_포인트", "memo": ""}, {"id": 136, "date": "2026-02-07", "desc": "스포티파이", "amount": 5900, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "복지_포인트", "memo": ""}, {"id": 137, "date": "2026-02-06", "desc": "요기요_", "amount": 13602, "category": "외식/배달", "welfare": "복지_포인트", "memo": ""}, {"id": 138, "date": "2026-02-06", "desc": "요기요_", "amount": 10477, "category": "외식/배달", "welfare": "복지_포인트", "memo": ""}, {"id": 139, "date": "2026-02-05", "desc": "요기요_", "amount": 10461, "category": "외식/배달", "welfare": "복지_포인트", "memo": ""}, {"id": 140, "date": "2026-02-04", "desc": "리디_만화책", "amount": 6233, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "복지_포인트", "memo": ""}, {"id": 141, "date": "2026-03-26", "desc": "(주)진에어", "amount": 466200, "category": "인세 지출", "welfare": "", "memo": ""}, {"id": 142, "date": "2026-03-26", "desc": "주식회사 놀유니버스", "amount": 10000, "category": "인세 지출", "welfare": "", "memo": ""}, {"id": 143, "date": "2026-03-25", "desc": "아파트관리비_02월수원역한라비발디퍼스", "amount": 204810, "category": "관리비", "welfare": "", "memo": ""}, {"id": 144, "date": "2026-03-24", "desc": "롯데시네마 수원_온라인 티켓", "amount": 10000, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 145, "date": "2026-03-23", "desc": "에스케이브로드밴드주식회사", "amount": 39600, "category": "통신비", "welfare": "", "memo": ""}, {"id": 146, "date": "2026-03-21", "desc": "지에스(GS)25 신동래미안점", "amount": 700, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 147, "date": "2026-03-18", "desc": "삼천리도시가스", "amount": 11270, "category": "가스비", "welfare": "", "memo": ""}, {"id": 148, "date": "2026-03-14", "desc": "에어컨 청소비", "amount": 215166, "category": "기타", "welfare": "", "memo": ""}, {"id": 149, "date": "2026-03-14", "desc": "현대해상화재보험(주)", "amount": 792390, "category": "자동차(주유, 하이패스 등)", "welfare": "", "memo": ""}, {"id": 150, "date": "2026-03-14", "desc": "엄마 선물", "amount": 18000, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 151, "date": "2026-03-14", "desc": "스타벅스코리아", "amount": 5200, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 152, "date": "2026-03-14", "desc": "(주)이마트 수원", "amount": 11000, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 153, "date": "2026-03-11", "desc": "(주) 영풍문고", "amount": 15400, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 154, "date": "2026-03-11", "desc": "전주현대옥 서현역점", "amount": 9000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 155, "date": "2026-03-11", "desc": "호시", "amount": 14000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 156, "date": "2026-03-09", "desc": "위대한상상", "amount": 14777, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 157, "date": "2026-03-09", "desc": "LGU+  통신", "amount": 36130, "category": "통신비", "welfare": "", "memo": ""}, {"id": 158, "date": "2026-03-07", "desc": "네이버페이 네이버 (그립톡)", "amount": 16410, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 159, "date": "2026-03-07", "desc": "네이버페이 네이버 (다리미)", "amount": 28000, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 160, "date": "2026-03-07", "desc": "명성왕족발", "amount": 10000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 161, "date": "2026-03-07", "desc": "CJ CGV(씨제이 씨지브이)㈜", "amount": 15000, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 162, "date": "2026-03-07", "desc": "제니베이글하우스", "amount": 15300, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 163, "date": "2026-03-06", "desc": "위대한상상", "amount": 14114, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 164, "date": "2026-03-06", "desc": "위대한상상", "amount": 12879, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 165, "date": "2026-03-05", "desc": "네이버페이 네이버 (케이스)", "amount": 7800, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 166, "date": "2026-03-05", "desc": "위대한상상", "amount": 12083, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 167, "date": "2026-03-04", "desc": "롯데쇼핑(주)롯데마트  수원", "amount": 3990, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 168, "date": "2026-03-04", "desc": "롯데쇼핑(주)타임 어화로(특/델/자동", "amount": 14000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 169, "date": "2026-03-04", "desc": "옥된장(서현점)", "amount": 11000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 170, "date": "2026-03-01", "desc": "네이버페이 네이버 (꽃)", "amount": 15900, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 171, "date": "2026-03-01", "desc": "네이버페이 네이버 (꽃)", "amount": 15900, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 172, "date": "2026-03-01", "desc": "네이버페이 네이버 (아침)", "amount": 26900, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 173, "date": "2026-03-31", "desc": "네이버페이_요기요 외식", "amount": 15666, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 174, "date": "2026-03-30", "desc": "타임빌라스 수원", "amount": 18000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 175, "date": "2026-03-30", "desc": "소담칼국수", "amount": 10000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 176, "date": "2026-03-29", "desc": "네이버페이_요기요 외식", "amount": 23387, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 177, "date": "2026-03-29", "desc": "네이버페이(계란)", "amount": 7900, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 178, "date": "2026-03-29", "desc": "놀유니버스티켓", "amount": 338000, "category": "e스포츠(티켓,구독,굿즈 등)", "welfare": "", "memo": ""}, {"id": 179, "date": "2026-03-28", "desc": "악쓰는하마코인노래연습장 신촌점", "amount": 3000, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 180, "date": "2026-03-28", "desc": "주식회사 넥스트스테이지", "amount": 7000, "category": "e스포츠(티켓,구독,굿즈 등)", "welfare": "", "memo": ""}, {"id": 181, "date": "2026-03-28", "desc": "카페더벨", "amount": 15000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 182, "date": "2026-03-27", "desc": "씨제이푸드빌(주) 뚜레쥬르 카페서현역점", "amount": 7850, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 183, "date": "2026-03-27", "desc": "커맨드 커피 로스팅", "amount": 10900, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 184, "date": "2026-03-24", "desc": "타임빌라스 수원", "amount": 5500, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 185, "date": "2026-03-24", "desc": "타임빌라스 수원", "amount": 6500, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 186, "date": "2026-03-24", "desc": "SK 세븐모바일 자동납부/에스케이텔링크주?", "amount": 12100, "category": "통신비", "welfare": "", "memo": ""}, {"id": 187, "date": "2026-03-24", "desc": "롯데컬처웍스(주)롯데시네마 수원 매점/티켓 외", "amount": 9500, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 188, "date": "2026-03-23", "desc": "타임빌라스 수원", "amount": 13800, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 189, "date": "2026-03-22", "desc": "타임빌라스 수원", "amount": 15000, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 190, "date": "2026-03-22", "desc": "타임빌라스 수원", "amount": 14000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 191, "date": "2026-03-22", "desc": "케이헤밍웨이베이커리카페", "amount": 22800, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 192, "date": "2026-03-22", "desc": "소나무약국", "amount": 8800, "category": "기타", "welfare": "", "memo": ""}, {"id": 193, "date": "2026-03-22", "desc": "연세패밀리의원", "amount": 6900, "category": "기타", "welfare": "", "memo": ""}, {"id": 194, "date": "2026-03-21", "desc": "서해청과", "amount": 5000, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 195, "date": "2026-03-21", "desc": "명품주유소", "amount": 5000, "category": "자동차(주유, 하이패스 등)", "welfare": "", "memo": ""}, {"id": 196, "date": "2026-03-21", "desc": "명품주유소", "amount": 30000, "category": "자동차(주유, 하이패스 등)", "welfare": "", "memo": ""}, {"id": 197, "date": "2026-03-21", "desc": "흑카츠", "amount": 13000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 198, "date": "2026-03-21", "desc": "카페1202", "amount": 6500, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 199, "date": "2026-03-18", "desc": "(주)빅파이트컴퍼니 쉐이크쉑분당", "amount": 12500, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 200, "date": "2026-03-17", "desc": "네이버페이_요기요 외식", "amount": 20435, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 201, "date": "2026-03-17", "desc": "네이버페이_요기요 외식", "amount": 15488, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 202, "date": "2026-03-16", "desc": "자동결제", "amount": 8500, "category": "e스포츠(티켓,구독,굿즈 등)", "welfare": "", "memo": ""}, {"id": 203, "date": "2026-03-16", "desc": "단느(DANNE)", "amount": 42000, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 204, "date": "2026-03-16", "desc": "타임빌라스 수원", "amount": 6500, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 205, "date": "2026-03-16", "desc": "더베이크 홈씨씨점", "amount": 4700, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 206, "date": "2026-03-14", "desc": "(주)이마트수원점", "amount": 63100, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 207, "date": "2026-03-14", "desc": "삼성전자서비스(주)모바일권선센터", "amount": 72000, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 208, "date": "2026-03-12", "desc": "네이버페이_요기요 외식", "amount": 17057, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 209, "date": "2026-03-12", "desc": "네이버페이_문화비", "amount": 19600, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 210, "date": "2026-03-12", "desc": "네이버페이_문화비", "amount": 7000, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 211, "date": "2026-04-28", "desc": "네이버페이 네이버", "amount": 75000, "category": "기타", "welfare": "", "memo": "엄마 어버이날 선물"}, {"id": 212, "date": "2026-04-26", "desc": "씨유(CU) 인스파이어리조트2호점", "amount": 2700, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 213, "date": "2026-04-25", "desc": "이마트24 R계산미래점", "amount": 5800, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 214, "date": "2026-04-24", "desc": "씨유(CU) 인스파이어리조트2호점", "amount": 2700, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 215, "date": "2026-04-24", "desc": "아파트관리비_03월수원역한라비발디퍼스", "amount": 176960, "category": "관리비", "welfare": "복지_카드", "memo": ""}, {"id": 216, "date": "2026-04-21", "desc": "스타벅스코리아", "amount": 5200, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 217, "date": "2026-04-21", "desc": "이마트24 라인플러스점", "amount": 1800, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 218, "date": "2026-04-21", "desc": "에스케이브로드밴드주식회사", "amount": 39600, "category": "통신비", "welfare": "", "memo": ""}, {"id": 219, "date": "2026-04-16", "desc": "삼천리도시가스", "amount": 13400, "category": "가스비", "welfare": "", "memo": ""}, {"id": 220, "date": "2026-04-15", "desc": "스타벅스코리아", "amount": 5200, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 221, "date": "2026-04-14", "desc": "스타벅스코리아", "amount": 4500, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 222, "date": "2026-04-14", "desc": "스타벅스코리아", "amount": 6100, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 223, "date": "2026-04-12", "desc": "이마트24 R계산미래점", "amount": 2800, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 224, "date": "2026-04-11", "desc": "네이버페이 네이버", "amount": 23900, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": "헤어플러스"}, {"id": 225, "date": "2026-04-11", "desc": "명품주유소", "amount": 50000, "category": "자동차(주유, 하이패스 등)", "welfare": "", "memo": ""}, {"id": 226, "date": "2026-04-11", "desc": "씨유(CU) 수원역한양점", "amount": 700, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 227, "date": "2026-04-11", "desc": "지에스(GS)25 신동빌리지점", "amount": 2700, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 228, "date": "2026-04-10", "desc": "리디주식회사", "amount": 28350, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 229, "date": "2026-04-09", "desc": "네이버페이 네이버", "amount": 38000, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": "운동화"}, {"id": 230, "date": "2026-04-09", "desc": "LGU+  통신", "amount": 36130, "category": "통신비", "welfare": "", "memo": ""}, {"id": 231, "date": "2026-04-08", "desc": "부성초밥", "amount": 9000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 232, "date": "2026-04-08", "desc": "AK PLAZA AKPLAZA 식", "amount": 8900, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 233, "date": "2026-04-07", "desc": "씨유(CU) 수원역한양점", "amount": 2700, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 234, "date": "2026-04-07", "desc": "주식회사 라프텔", "amount": 9900, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 235, "date": "2026-04-06", "desc": "주식회사 이지피쥐", "amount": 11000, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 236, "date": "2026-04-06", "desc": "스타벅스코리아", "amount": 6100, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 237, "date": "2026-04-05", "desc": "주식회사 아성다이소", "amount": 15000, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 238, "date": "2026-04-05", "desc": "메가박스중앙(주)AK플라자지점", "amount": 12400, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 239, "date": "2026-04-05", "desc": "메가박스중앙(주)", "amount": 15000, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 240, "date": "2026-04-04", "desc": "(주)농협하나로유통  농협수원유통센터", "amount": 18000, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": "식물"}, {"id": 241, "date": "2026-04-04", "desc": "(주)농협하나로유통  농협수원유통센터", "amount": 33400, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": "식물"}, {"id": 242, "date": "2026-04-04", "desc": "(주)농협하나로유통  농협수원유통센터", "amount": 2500, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": "식물"}, {"id": 243, "date": "2026-04-04", "desc": "데일리테이블", "amount": 6600, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 244, "date": "2026-04-04", "desc": "우트볼 하우스 신동본점", "amount": 16000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 245, "date": "2026-04-03", "desc": "위대한상상", "amount": 23639, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 246, "date": "2026-04-02", "desc": "위대한상상", "amount": 12017, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 247, "date": "2026-04-02", "desc": "다우데이타", "amount": 84000, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 248, "date": "2026-04-01", "desc": "에프알엘코리아(주)", "amount": 39900, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 249, "date": "2026-04-01", "desc": "롯데쇼핑(주)타임 만다복(델/특/자동", "amount": 9000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 250, "date": "2026-04-01", "desc": "커맨드 커피 로스팅", "amount": 4900, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 251, "date": "2026-04-01", "desc": "카츠소야", "amount": 12000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 252, "date": "2026-04-30", "desc": "네이버페이_요기요 외식", "amount": 13800, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 253, "date": "2026-04-30", "desc": "네이버페이_요기요 외식", "amount": 37875, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 254, "date": "2026-04-30", "desc": "교통요금", "amount": 40600, "category": "교통비", "welfare": "", "memo": ""}, {"id": 255, "date": "2026-04-29", "desc": "진우동", "amount": 9900, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 256, "date": "2026-04-29", "desc": "메가엠지씨커피 서현역광장점", "amount": 3900, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 257, "date": "2026-04-28", "desc": "네이버페이_요기요 외식", "amount": 17492, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 258, "date": "2026-04-28", "desc": "SK 세븐모바일 자동납부/에스케이텔링크주?", "amount": 12100, "category": "통신비", "welfare": "", "memo": ""}, {"id": 259, "date": "2026-04-27", "desc": "네이버페이_요기요 외식", "amount": 16944, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 260, "date": "2026-04-27", "desc": "주식회사 외래", "amount": 2000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 261, "date": "2026-04-27", "desc": "분당제생병원(검진센타)", "amount": 20000, "category": "기타", "welfare": "", "memo": "병원"}, {"id": 262, "date": "2026-04-26", "desc": "인스파이어인티그레이티드리조트 리테일", "amount": 15000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 263, "date": "2026-04-26", "desc": "주식회사 인스파이어인티그레이티드리조트", "amount": 6000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 264, "date": "2026-04-26", "desc": "명품주유소", "amount": 5000, "category": "자동차(주유, 하이패스 등)", "welfare": "", "memo": ""}, {"id": 265, "date": "2026-04-26", "desc": "명품주유소", "amount": 30000, "category": "자동차(주유, 하이패스 등)", "welfare": "", "memo": ""}, {"id": 266, "date": "2026-04-25", "desc": "주식회사 인스파이어인티그레이티드리조트", "amount": 12000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 267, "date": "2026-04-25", "desc": "주식회사 인스파이어인티그레이티드리조트", "amount": 10000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 268, "date": "2026-04-25", "desc": "11번가-페이코", "amount": 28900, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 269, "date": "2026-04-24", "desc": "버틀러 수원역점", "amount": 6000, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 270, "date": "2026-04-24", "desc": "네이버페이", "amount": 48700, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": "신발"}, {"id": 271, "date": "2026-04-23", "desc": "네이버페이", "amount": 55000, "category": "e스포츠(티켓,구독,굿즈 등)", "welfare": "", "memo": "피규어"}, {"id": 272, "date": "2026-04-22", "desc": "인터넷상거래(회원제)", "amount": 10000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 273, "date": "2026-04-22", "desc": "메가엠지씨커피 서현역광장점", "amount": 3900, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 274, "date": "2026-04-21", "desc": "보드게임카페 레드버튼 서현점", "amount": 9900, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 275, "date": "2026-04-21", "desc": "샤브로21 서현", "amount": 11000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 276, "date": "2026-04-21", "desc": "카츠소야", "amount": 12000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 277, "date": "2026-04-20", "desc": "네이버페이_요기요 외식", "amount": 35628, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 278, "date": "2026-04-20", "desc": "네이버페이_요기요 외식", "amount": 12402, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 279, "date": "2026-04-19", "desc": "다우데이타", "amount": 29500, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 280, "date": "2026-04-19", "desc": "타임빌라스 수원", "amount": 29100, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": "슬리퍼"}, {"id": 281, "date": "2026-04-19", "desc": "투아이즈안경", "amount": 40000, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 282, "date": "2026-04-19", "desc": "글림", "amount": 5300, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 283, "date": "2026-04-19", "desc": "롯데쇼핑(주)롯데마트수원점", "amount": 3990, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 284, "date": "2026-04-17", "desc": "네이버페이_요기요 외식", "amount": 19928, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 285, "date": "2026-04-16", "desc": "자동결제", "amount": 8500, "category": "e스포츠(티켓,구독,굿즈 등)", "welfare": "", "memo": ""}, {"id": 286, "date": "2026-04-16", "desc": "네이버페이_요기요 외식", "amount": 15732, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 287, "date": "2026-04-15", "desc": "짱오락실분당서현점", "amount": 1000, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 288, "date": "2026-04-15", "desc": "AK플라자 분당점", "amount": 28000, "category": "기타", "welfare": "", "memo": "이티 집들이 선물"}, {"id": 289, "date": "2026-04-15", "desc": "호시", "amount": 14000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 290, "date": "2026-04-14", "desc": "AK플라자 분당점", "amount": 8900, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 291, "date": "2026-04-14", "desc": "스타벅스 코리아", "amount": 6100, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 292, "date": "2026-04-13", "desc": "네이버페이_요기요 외식", "amount": 15613, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 293, "date": "2026-04-13", "desc": "네이버페이_요기요 외식", "amount": 16790, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 294, "date": "2026-04-02", "desc": "교통요금", "amount": 1200, "category": "교통비", "welfare": "", "memo": ""}, {"id": 295, "date": "2026-04-02", "desc": "교통요금", "amount": 41500, "category": "교통비", "welfare": "", "memo": ""}, {"id": 296, "date": "2026-05-31", "desc": "삼성화재", "amount": 4330, "category": "인세 지출", "welfare": "", "memo": ""}, {"id": 297, "date": "2026-05-26", "desc": "아파트관리비_04월수원역한라비발디퍼스", "amount": 190210, "category": "관리비", "welfare": "복지_카드", "memo": ""}, {"id": 298, "date": "2026-05-25", "desc": "씨제이올리브영(주)롯데몰수원점", "amount": 14000, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 299, "date": "2026-05-22", "desc": "한국철도공사_간편", "amount": 2600, "category": "교통비", "welfare": "", "memo": ""}, {"id": 300, "date": "2026-05-21", "desc": "에스케이브로드밴드주식회사", "amount": 39600, "category": "통신비", "welfare": "", "memo": ""}, {"id": 301, "date": "2026-05-19", "desc": "스타벅스코리아", "amount": 5800, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 302, "date": "2026-05-18", "desc": "삼천리도시가스", "amount": 10210, "category": "가스비", "welfare": "", "memo": ""}, {"id": 303, "date": "2026-05-17", "desc": "스타벅스코리아", "amount": 12100, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 304, "date": "2026-05-16", "desc": "철도승차권반환수수료", "amount": 400, "category": "교통비", "welfare": "", "memo": ""}, {"id": 305, "date": "2026-05-12", "desc": "스타벅스코리아", "amount": 5800, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 306, "date": "2026-05-11", "desc": "LGU+ 통신", "amount": 36130, "category": "통신비", "welfare": "", "memo": ""}, {"id": 307, "date": "2026-05-10", "desc": "네이버페이 네이버", "amount": 22990, "category": "기타", "welfare": "", "memo": ""}, {"id": 308, "date": "2026-05-10", "desc": "씨유(CU) 계산좋은하루점", "amount": 2600, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 309, "date": "2026-05-09", "desc": "주식회사 아성다이소", "amount": 8000, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 310, "date": "2026-05-09", "desc": "양과자점 코안도르", "amount": 24300, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 311, "date": "2026-05-09", "desc": "마미컵밥", "amount": 6000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 312, "date": "2026-05-08", "desc": "네이버페이 네이버", "amount": 18900, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 313, "date": "2026-05-07", "desc": "주식회사 라프텔", "amount": 9900, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 314, "date": "2026-05-06", "desc": "씨제이올리브영(주)롯데몰수원점", "amount": 48100, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 315, "date": "2026-05-06", "desc": "AK PLAZA 수원점", "amount": 8000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 316, "date": "2026-05-06", "desc": "주식회사 아성다이소", "amount": 11000, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 317, "date": "2026-05-04", "desc": "위대한상상", "amount": 18707, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 318, "date": "2026-05-03", "desc": "철도승차권반환수수료", "amount": 400, "category": "교통비", "welfare": "", "memo": ""}, {"id": 319, "date": "2026-05-03", "desc": "철도승차권반환수수료", "amount": 400, "category": "교통비", "welfare": "", "memo": ""}, {"id": 320, "date": "2026-05-02", "desc": "지자체세입금(네이 수원시권선지방소득세", "amount": 14450, "category": "세금", "welfare": "", "memo": ""}, {"id": 321, "date": "2026-05-01", "desc": "다우데이타", "amount": 81000, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 322, "date": "2026-05-01", "desc": "(주)이마트 수원", "amount": 68350, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 323, "date": "2026-05-01", "desc": "메킷카운트커피", "amount": 6000, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 324, "date": "2026-05-30", "desc": "AK PLAZA(수원점)_구두", "amount": 99000, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 325, "date": "2026-05-30", "desc": "AK PLAZA(수원점)", "amount": 12750, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 326, "date": "2026-05-30", "desc": "주식회사 아성다이소", "amount": 22000, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 327, "date": "2026-05-30", "desc": "롯데리아수원역사점", "amount": 9900, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 328, "date": "2026-05-29", "desc": "단느(DANNE)", "amount": 27000, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 329, "date": "2026-05-29", "desc": "컴포즈커피 SKV1모터스점", "amount": 1100, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 330, "date": "2026-05-29", "desc": "유미카츠 수원SK V1모터스", "amount": 10500, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 331, "date": "2026-05-28", "desc": "네이버페이_요기요 외식", "amount": 21593, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 332, "date": "2026-05-28", "desc": "SK 세븐모바일 자동납부/에스케이텔링크주?", "amount": 12100, "category": "통신비", "welfare": "", "memo": ""}, {"id": 333, "date": "2026-05-27", "desc": "타임빌라스 수원", "amount": 14000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 334, "date": "2026-05-27", "desc": "미아리우동집 서현점", "amount": 4000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 335, "date": "2026-05-27", "desc": "메가엠지씨커피 서현역광장점", "amount": 2900, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 336, "date": "2026-05-26", "desc": "한국소방 수원 서비스(KFIRE)_소방", "amount": 79800, "category": "기타", "welfare": "", "memo": ""}, {"id": 337, "date": "2026-05-25", "desc": "반다이남코코리아 캡슐2", "amount": 6000, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 338, "date": "2026-05-25", "desc": "네이버페이_메가박스", "amount": 7500, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 339, "date": "2026-05-25", "desc": "네이버페이_마켓컬리", "amount": 25190, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 340, "date": "2026-05-25", "desc": "바소용산", "amount": 14000, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 341, "date": "2026-05-24", "desc": "네이버페이_탈취제", "amount": 28900, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 342, "date": "2026-05-24", "desc": "네이버페이_메가박스", "amount": 9000, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 343, "date": "2026-05-23", "desc": "멜트어웨이", "amount": 21000, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 344, "date": "2026-05-23", "desc": "그랩어바이트(GRAB A BITE)", "amount": 9800, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 345, "date": "2026-05-21", "desc": "버스타고_APP_네이버페이", "amount": 15000, "category": "인세 지출", "welfare": "", "memo": ""}, {"id": 346, "date": "2026-05-20", "desc": "커맨드 커피 로스팅", "amount": 14900, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 347, "date": "2026-05-19", "desc": "카츠소야", "amount": 11000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 348, "date": "2026-05-19", "desc": "미가", "amount": 10000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 349, "date": "2026-05-19", "desc": "버스타고_APP_네이버페이", "amount": 18000, "category": "교통비", "welfare": "", "memo": ""}, {"id": 350, "date": "2026-05-18", "desc": "한국철도공사", "amount": 500, "category": "교통비", "welfare": "", "memo": ""}, {"id": 351, "date": "2026-05-18", "desc": "네이버페이_요기요 외식", "amount": 13564, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 352, "date": "2026-05-16", "desc": "한국철도공사", "amount": 2600, "category": "교통비", "welfare": "", "memo": ""}, {"id": 353, "date": "2026-05-16", "desc": "네이버페이_요기요 외식", "amount": 23611, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 354, "date": "2026-05-16", "desc": "타임빌라스 수원_옷쇼핑", "amount": 44900, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 355, "date": "2026-05-16", "desc": "타임빌라스 수원_옷쇼핑", "amount": 25800, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 356, "date": "2026-05-16", "desc": "포츄노바", "amount": 5500, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 357, "date": "2026-05-13", "desc": "네이버페이_요기요 외식", "amount": 14255, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 358, "date": "2026-05-13", "desc": "네이버페이_면세점", "amount": 46311, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 359, "date": "2026-05-12", "desc": "전주현대옥 서현역점", "amount": 9000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 360, "date": "2026-05-11", "desc": "네이버페이_요기요 외식", "amount": 14839, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 361, "date": "2026-05-05", "desc": "롯데쇼핑(주)롯데마트수원점", "amount": 1900, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 362, "date": "2026-05-03", "desc": "주식회사 아성다이소", "amount": 11000, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 363, "date": "2026-05-03", "desc": "주식회사 스타필드수원", "amount": 32000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 364, "date": "2026-05-02", "desc": "롯데쇼핑(주)롯데마트수원점", "amount": 50990, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 365, "date": "2026-05-02", "desc": "버틀러 수원역점", "amount": 6000, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 366, "date": "2026-05-02", "desc": "수원역 한라비발디퍼스트아파트 입주자대표", "amount": 1000, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 367, "date": "2026-05-02", "desc": "수원역 한라비발디퍼스트아파트 입주자대표", "amount": 4000, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 368, "date": "2026-05-02", "desc": "수원역 한라비발디퍼스트아파트 입주자대표", "amount": 3000, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 369, "date": "2026-05-01", "desc": "마일리버거", "amount": 10900, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 370, "date": "2026-05-26", "desc": "사이닉 토너", "amount": 19900, "category": "옷/화장품/신발/가방 등", "welfare": "복지_포인트", "memo": ""}, {"id": 371, "date": "2026-05-26", "desc": "레드프린팅", "amount": 11090, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "복지_포인트", "memo": ""}, {"id": 372, "date": "2026-05-01", "desc": "밀크 프로더", "amount": 99000, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "복지_포인트", "memo": ""}, {"id": 373, "date": "2026-05-01", "desc": "리디", "amount": 100000, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "복지_포인트", "memo": ""}, {"id": 374, "date": "2026-06-30", "desc": "메가엠지씨커피 서현역광장점", "amount": 400, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 375, "date": "2026-06-28", "desc": "이마트24 R계산미래점", "amount": 5800, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 376, "date": "2026-06-27", "desc": "탐앤탐스 경인교대입구역점", "amount": 4500, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 377, "date": "2026-06-27", "desc": "지에스(GS)25 경기상상캠퍼스점", "amount": 1000, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 378, "date": "2026-06-24", "desc": "투썸플레이스 서현중앙점", "amount": 11800, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 379, "date": "2026-06-24", "desc": "아파트관리비_05월수원역한라비발디퍼스", "amount": 195070, "category": "관리비", "welfare": "복지_카드", "memo": ""}, {"id": 380, "date": "2026-06-23", "desc": "주식회사 카카오", "amount": 4000, "category": "e스포츠(티켓,구독,굿즈 등)", "welfare": "", "memo": ""}, {"id": 381, "date": "2026-06-22", "desc": "에스케이브로드밴드주식회사", "amount": 39600, "category": "통신비", "welfare": "", "memo": ""}, {"id": 382, "date": "2026-06-21", "desc": "씨제이올리브영(주)롯데몰수원점", "amount": 5700, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 383, "date": "2026-06-21", "desc": "롯데쇼핑(주)타임 마츠노하나(델/특/", "amount": 13800, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 384, "date": "2026-06-21", "desc": "씨유(CU) 수원역한양점", "amount": 1000, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 385, "date": "2026-06-21", "desc": "롯데시네마 수원_온라인 티켓", "amount": 12000, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 386, "date": "2026-06-19", "desc": "컴포즈 분당서현로데오점", "amount": 2900, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 387, "date": "2026-06-17", "desc": "사이공본가 오리역점", "amount": 8500, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 388, "date": "2026-06-17", "desc": "메가엠지씨커피 서현역광장점", "amount": 2900, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 389, "date": "2026-06-17", "desc": "주식회사 라프텔", "amount": 9900, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 390, "date": "2026-06-16", "desc": "㈜알라딘커뮤니케이션", "amount": 2250, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 391, "date": "2026-06-15", "desc": "CJ CGV(문화비)", "amount": 11000, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 392, "date": "2026-06-15", "desc": "(주)신세계면세점 본점", "amount": 300000, "category": "인세 지출", "welfare": "", "memo": ""}, {"id": 393, "date": "2026-06-15", "desc": "롯데쇼핑(주)타임 한입소반(델/특/자", "amount": 6500, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 394, "date": "2026-06-14", "desc": "(주)커피빈코리아 강남역12번출구점", "amount": 5900, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 395, "date": "2026-06-13", "desc": "코레일유통주식회사(용산역)", "amount": 900, "category": "교통비", "welfare": "", "memo": ""}, {"id": 396, "date": "2026-06-13", "desc": "한국철도공사_간편", "amount": 2600, "category": "교통비", "welfare": "", "memo": ""}, {"id": 397, "date": "2026-06-12", "desc": "한국철도공사_간편", "amount": 2700, "category": "교통비", "welfare": "", "memo": ""}, {"id": 398, "date": "2026-06-12", "desc": "롯데쇼핑(주)롯데마트  수원", "amount": 8270, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 399, "date": "2026-06-12", "desc": "롯데쇼핑 (주) 라코스테우먼", "amount": 181300, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 400, "date": "2026-06-12", "desc": "롯데쇼핑(주)타임 르사이공(자)", "amount": 18000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 401, "date": "2026-06-12", "desc": "소나무약국", "amount": 3600, "category": "기타", "welfare": "", "memo": ""}, {"id": 402, "date": "2026-06-12", "desc": "연세패밀리의원", "amount": 5600, "category": "기타", "welfare": "", "memo": ""}, {"id": 403, "date": "2026-06-09", "desc": "위대한상상", "amount": 21500, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 404, "date": "2026-06-09", "desc": "㈜ 교보문고", "amount": 15060, "category": "공부(교재,시험비,학원 등)", "welfare": "", "memo": ""}, {"id": 405, "date": "2026-06-09", "desc": "위대한상상", "amount": 20399, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 406, "date": "2026-06-09", "desc": "네이버페이 네이버", "amount": 8300, "category": "", "welfare": "", "memo": ""}, {"id": 407, "date": "2026-06-09", "desc": "네이버파이낸셜 네이버", "amount": 44060, "category": "", "welfare": "", "memo": ""}, {"id": 408, "date": "2026-06-09", "desc": "LGU+  통신", "amount": 36130, "category": "통신비", "welfare": "", "memo": ""}, {"id": 409, "date": "2026-06-08", "desc": "롯데쇼핑(주)롯데마트  수원", "amount": 8980, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 410, "date": "2026-06-08", "desc": "네이버페이 네이버", "amount": 24200, "category": "", "welfare": "", "memo": ""}, {"id": 411, "date": "2026-06-08", "desc": "이마트24 R계산미래점", "amount": 2500, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 412, "date": "2026-06-04", "desc": "주식회사 놀유니버스", "amount": 30000, "category": "티켓(영화,공연,전시)+굿즈", "welfare": "", "memo": ""}, {"id": 413, "date": "2026-06-03", "desc": "주식회사 현대디에프", "amount": 39293, "category": "", "welfare": "", "memo": ""}, {"id": 414, "date": "2026-06-02", "desc": "위대한상상", "amount": 16684, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 415, "date": "2026-06-30", "desc": "피규리스트(FIGURIST)", "amount": 14000, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 416, "date": "2026-06-29", "desc": "네이버페이_요기요 외식", "amount": 17143, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 417, "date": "2026-06-27", "desc": "명품주유소", "amount": 50000, "category": "자동차(주유, 하이패스 등)", "welfare": "", "memo": ""}, {"id": 418, "date": "2026-06-27", "desc": "둥지카페", "amount": 12300, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 419, "date": "2026-06-26", "desc": "SK 세븐모바일 자동납부/에스케이텔링크주?", "amount": 12100, "category": "통신비", "welfare": "", "memo": ""}, {"id": 420, "date": "2026-06-25", "desc": "네이버페이—비데", "amount": 169000, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 421, "date": "2026-06-25", "desc": "네이버페이", "amount": 45480, "category": "옷/화장품/신발/가방 등", "welfare": "", "memo": ""}, {"id": 422, "date": "2026-06-24", "desc": "부성초밥", "amount": 14000, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 423, "date": "2026-06-24", "desc": "AK플라자 분당점", "amount": 40000, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 424, "date": "2026-06-21", "desc": "네이버페이", "amount": 45680, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 425, "date": "2026-06-21", "desc": "지자체세입금(네이버페이)", "amount": 130870, "category": "세금", "welfare": "", "memo": ""}, {"id": 426, "date": "2026-06-20", "desc": "네이버페이_비타민", "amount": 59900, "category": "e스포츠(티켓,구독,굿즈 등)", "welfare": "", "memo": ""}, {"id": 427, "date": "2026-06-19", "desc": "AK플라자 분당점", "amount": 25000, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 428, "date": "2026-06-19", "desc": "AK플라자 분당점", "amount": 4200, "category": "식료품(마트,편의점)", "welfare": "", "memo": ""}, {"id": 429, "date": "2026-06-18", "desc": "봄툰", "amount": 39800, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 430, "date": "2026-06-18", "desc": "네이버페이_요기요 외식", "amount": 15743, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 431, "date": "2026-06-15", "desc": "네이버페이_선풍기", "amount": 109000, "category": "생활용품(다이소,온라인)", "welfare": "", "memo": ""}, {"id": 432, "date": "2026-06-10", "desc": "수원역 한라비발디퍼스트아파트 입주자대표", "amount": 4000, "category": "관리비", "welfare": "", "memo": ""}, {"id": 433, "date": "2026-06-10", "desc": "수원역 한라비발디퍼스트아파트 입주자대표", "amount": 3000, "category": "관리비", "welfare": "", "memo": ""}, {"id": 434, "date": "2026-06-03", "desc": "컬리너리스퀘어 인천공항T2점", "amount": 13500, "category": "외식/배달", "welfare": "", "memo": ""}, {"id": 435, "date": "2026-06-03", "desc": "더베이크 홈씨씨점", "amount": 3900, "category": "카페(커피, 디저트)", "welfare": "", "memo": ""}, {"id": 436, "date": "2026-06-02", "desc": "프린트카페 수원역점", "amount": 600, "category": "인세 지출", "welfare": "", "memo": ""}, {"id": 437, "date": "2026-06-02", "desc": "교통요금", "amount": 22900, "category": "교통비", "welfare": "", "memo": ""}, {"id": 438, "date": "2026-06-29", "desc": "리디", "amount": 15920, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "", "memo": ""}, {"id": 439, "date": "2026-07-01", "desc": "리디충전", "amount": 200000, "category": "컨텐츠(음악,책,웹툰,e-book)", "welfare": "복지_포인트", "memo": ""}];
+const txnM=t=>+t.date.slice(5,7)-1; /* 거래의 월 인덱스 */
+
+const MONTHLY={
+ '1월':{income:5805720,salary:5495720,saving:19300000,fixed:1705320,living:1570386,real:1005990,piggy:294010,welfareUse:564396},
+ '2월':{income:9813020,salary:9403920,saving:2300000,fixed:1705320,living:1773194,real:1265194,piggy:328816,welfareUse:508000},
+ '3월':{income:5610470,salary:5499750,saving:22300000,fixed:1705320,living:2557036,real:1993982,piggy:-365166,welfareUse:563054},
+ '4월':{income:15010020,salary:5360360,saving:2300000,fixed:1705320,living:1694690,real:17730,piggy:917104,welfareUse:1676960},
+ '5월':{income:5499770,salary:5499770,saving:2300000,fixed:1864270,living:1695090,real:1504880,piggy:712224,welfareUse:190210},
+ '6월':{income:5414320,salary:5414320,saving:2300000,fixed:1836190,living:1455309,real:1260239,piggy:751985,welfareUse:195070},
+};
+const BUDGET_TOTAL=1300000;
+/* 고정지출 — 명칭/월 고정금액/기간 등록 가능 */
+let FIXED=[
+ {name:'부모님 용돈',amount:150000,start:'2025-01',end:''},
+ {name:'대출금',amount:1477000,start:'2025-06',end:'2032-05'},
+ {name:'보험료',amount:78320,start:'2024-03',end:''},
+ {name:'세금',amount:130870,start:'2026-05',end:'2026-06'},
+];
+const fixedInMonth=i=>{const ym='2026-'+String(i+1).padStart(2,'0');return FIXED.filter(f=>(!f.start||f.start<=ym)&&(!f.end||f.end>=ym));};
+/* 수입 — 월급 + 기타 수입 (수기 입력) */
+let INCOMES={
+ '1월':{salary:5495720,etc:[{name:'기타',amount:310000}]},
+ '2월':{salary:9403920,etc:[{name:'기타',amount:409100}]},
+ '3월':{salary:5499750,etc:[{name:'이자',amount:720},{name:'기타',amount:110000}]},
+ '4월':{salary:5360360,etc:[{name:'환급금',amount:9649660}]},
+ '5월':{salary:5499770,etc:[]},
+ '6월':{salary:5414320,etc:[]},
+};
+/* 인세 통장 월별 항목: 기부(디폴트 5만), 인세 적금 입금(디폴트 0), 이자 */
+let RY_MONTH=[{"don": 50000, "save": 2365018, "int": 0}, {"don": 50000, "save": 111129, "int": 0}, {"don": 50000, "save": -2676147, "int": 84665}, {"don": 50000, "save": 0, "int": 0}, {"don": 50000, "save": 1000000, "int": 0}, {"don": 50000, "save": 0, "int": 0}];
+const RY_BASE=7115335; /* 인세용 자유적금 기초 잔고 */
+let RY_SAVING={inst:'신한은행',type:'적금',subtype:'자유',maturity:'2027-01-15'};
+const rySavingBalance=i=>RY_BASE+RY_MONTH.slice(0,i+1).reduce((s,x)=>s+x.save,0);
+const rySpend=i=>{const s=TXNS.filter(t=>t.category==='인세 지출'&&txnM(t)===i).reduce((a,t)=>a+t.amount,0);return s||ROYALTY_SPEND[i]||0;};
+/* 저축·투자 상품 (결산 탭에서 등록/수정) */
+let SAVINGS=[
+ {inst:'신한은행',type:'적금',subtype:'정기',monthly:300000,start:'2025-07',maturity:'2026-06-15'},
+ {inst:'KB증권',type:'발행어음',subtype:'',monthly:1000000,start:'2025-10',maturity:'2027-03-15'},
+ {inst:'삼성증권',type:'투자원금',subtype:'',monthly:1000000,start:'2025-01',maturity:''},
+];
+/* 만기월: 누적 납입액을 자동 마이너스 (수기 수정 = maturityOverride) */
+const monthsBetween=(a,b)=>(+b.slice(0,4)-+a.slice(0,4))*12+(+b.slice(5,7)-+a.slice(5,7))+1;
+const isMaturityMonth=(s,ym)=>s.maturity&&s.maturity.slice(0,7)===ym;
+const savActive=(s,ym)=>(!s.start||s.start<=ym)&&(!s.maturity||s.maturity.slice(0,7)>=ym);
+function savAmount(s,ym){
+  if(isMaturityMonth(s,ym))return s.maturityOverride!==undefined?s.maturityOverride:-(s.monthly*monthsBetween(s.start||ym,s.maturity));
+  return s.monthly;
+}
+const ymOf=i=>'2026-'+String(i+1).padStart(2,'0');
+/* 월별 카테고리 생활비 (결산 시트 1~6월 실제값) */
+const CAT_MONTHLY={
+ '교통비':[41500,48000,0,83300,24900,29100],
+ '관리비':[189650,226900,204810,176960,190210,202070],
+ '통신비':[94630,87830,87830,87830,87830,87830],
+ '가스비':[13320,16510,11270,13400,10210,0],
+ '생활용품':[0,524044,189410,92800,80900,278000],
+ '식료품':[191970,124716,118590,31090,188680,136630],
+ '외식/배달':[350066,175281,341370,403560,247169,165769],
+ '카페':[67300,46600,70900,69600,113900,50400],
+ '옷/뷰티':[164660,96000,57000,224600,325011,232480],
+ '자동차':[0,0,827390,135000,0,50000],
+ '컨텐츠':[135810,252433,26600,151750,196900,81870],
+ '티켓/굿즈':[163680,53980,37500,38300,126590,53000],
+ 'e스포츠':[0,8500,353500,63500,0,63900],
+ '공부':[0,22000,0,0,0,15060],
+ '기타':[157800,90400,230866,123000,102790,9200],
+};
+/* 인세 통장 지출 (생활비와 분리, 1~7월) */
+const ROYALTY_SPEND=[0,32000,0,15000,0,21000,32000];
+const DONATION=50000; /* 기부 — 인세 통장에서 */
+
+/* 투자 계좌 — 월별(1~7월) 누적원금·평가금 스냅샷. null = 입력전 (7월은 미입력 상태) */
+let ACCOUNTS=[{"name": "KB IRP", "tag": "비과세", "deps": [8400000, 8400000, 8400000, 8400000, 8400000, 8400000, 8400000], "vals": [9194650, 9516364, 8924453, 9801539, 10579812, null, null], "cumDiv": 0}, {"name": "KB 연금저축", "tag": "비과세", "deps": [12000000, 12000000, 12000000, 12000000, 12000000, 12000000, 12000000], "vals": [12316061, 12994471, 12185946, 13383343, 14677129, null, null], "cumDiv": 0}, {"name": "삼성 연금저축", "tag": "과세", "deps": [9000000, 9000000, 9000000, 9000000, 9000000, 9000000, 9000000], "vals": [9744626, 9697365, 9613026, 10357123, 10991641, null, null], "cumDiv": 0}, {"name": "삼성 ISA", "tag": "ISA", "deps": [29000000, 30000000, 31000000, 32000000, 34000000, 34000000, 34000000], "vals": [29666080, 31254255, 31993930, 33445690, 35399985, null, null], "cumDiv": 740051, "isa": true}];
+/* ISA 하위 항목 — 개별 원금·평가금·월배당·보유수량. null = 입력전 */
+let ISA_ITEMS=[{"name": "PLUS 고배당주", "deps": [1598645, 1198985, 1198985, 1198985, 1198985, 1198985, 1198985], "vals": [1966000, 1731000, 1549800, 1629900, 1617000, null, null], "divs": [6880, 5160, 5160, 5160, 5160, null, null], "shares": 142, "divBase": 22542}, {"name": "Tiger 리츠부동산인프라", "deps": [2007427, 2554387, 3063737, 3371762, 3866887, 3866887, 3866887], "vals": [2045225, 2662250, 3152170, 3512745, 3459330, null, null], "divs": [15015, 18975, 22638, 24849, 27951, null, null], "shares": 780, "divBase": 46662}, {"name": "SOL 미국배당다우존스(H)", "deps": [1278999, 1278999, 1291234, 1315214, 2024274, 2024274, 2024274], "vals": [1387035, 1447290, 1437830, 1482000, 2236080, null, null], "divs": [3276, 3861, 3540, 3360, 4640, null, null], "shares": 460, "divBase": 15338}, {"name": "TIGER 미국투자등급회사채액티브(H)", "deps": [4970930, 4970930, 4970930, 4970930, 4970930, 4970930, 4970930], "vals": [4846000, 4900500, 4784000, 4747500, 4766500, null, null], "divs": [17000, 19600, 22400, 15000, 21000, null, null], "shares": 395, "divBase": 75944}, {"name": "KODEX CD금리", "deps": [18264375, 18264375, 18264375, 18264375, 18264375, 18264375, 18264375], "vals": [18253410, 18246270, 18248990, 18254345, 18253495, null, null], "divs": [43724, 44472, 39236, 40613, 41956, null, null], "shares": 11, "divBase": 93390}, {"name": "KODEX 미국S&P500", "deps": [1117060, 2249510, 2818135, 3579450, 4480550, 4480550, 4480550], "vals": [1168410, 2266945, 2821140, 3819200, 5067580, null, null], "divs": [6069, 0, 0, 18880, 0, null, null], "shares": 388, "divBase": 600}];
+const itemCumDiv=(it,mi)=>it.divBase+it.divs.slice(0,mi+1).reduce((s,v)=>s+(v||0),0);
+/* 실수익률 = (평가금 + 누적배당 − 원금) / 원금 · 입력전(null)이면 null */
+const itemRate=(it,mi)=>(it.vals[mi]==null||!it.deps[mi])?null:((it.vals[mi]+itemCumDiv(it,mi)-it.deps[mi])/it.deps[mi]*100);
+const accRate=(a,mi)=>a.vals[mi]==null?null:((a.vals[mi]+a.cumDiv-a.deps[mi])/a.deps[mi]*100);
+const invTotVal=mi=>{const e=ACCOUNTS.filter(a=>a.vals[mi]!=null);return e.length?e.reduce((s,a)=>s+a.vals[mi],0):null;};
+const invTotDep=mi=>ACCOUNTS.reduce((s,a)=>s+a.deps[mi],0);
+const invTotDiv=()=>ACCOUNTS.reduce((s,a)=>s+a.cumDiv,0);
+const fmtV=v=>v==null?'<span class="pre">입력</span>':fmt(v)+'원';
+const fmtR=r=>r==null?'<span style="color:var(--sub)">-</span>':`<b class="${r>=0?'pos':'neg'}">${r>=0?'+':''}${r.toFixed(1)}%</b>`;
+/* 투자 그래프 라벨: 0,000만 (소수점 없음) */
+const kfm2=n=>Math.round(n/10000).toLocaleString('ko-KR')+'만';
+
+/* 인세 — 작품 정보 포함. hist = 월별 정산금 (1월~7월) */
+const MLABELS=['1월','2월','3월','4월','5월','6월','7월'];
+let WORKS=[{"title": "기억의잔상", "publisher": "해온", "pubDate": "2022-11-01", "settleDay": "매월 10일", "advance": 0, "hist": [10687, 98217, 21492, 12262, 10278, 18222, 0], "base": 8483217}, {"title": "안녕여음", "publisher": "문라이트북스", "pubDate": "2023-05-12", "settleDay": "매월 15일", "advance": 0, "hist": [13441, 98274, 40412, 13134, 7606, 16858, 0], "base": 16251151}, {"title": "페오크", "publisher": "문라이트북스", "pubDate": "2023-02-20", "settleDay": "매월 15일", "advance": 0, "hist": [26098, 8055, 6391, 15176, 407, 16110, 0], "base": 8301300}, {"title": "달토끼", "publisher": "해온", "pubDate": "2023-09-01", "settleDay": "매월 10일", "advance": 0, "hist": [568, 0, 0, 568, 933, 0, 0], "base": 206618, "ended": true}, {"title": "장마끝", "publisher": "해온", "pubDate": "2024-03-15", "settleDay": "매월 10일", "advance": 0, "hist": [1410, 38029, 19408, 9411, 10158, 11971, 0], "base": 3383881}, {"title": "골든아처스", "publisher": "스텔라컨텐츠", "pubDate": "2024-08-01", "settleDay": "매월 25일", "advance": 0, "hist": [30780, 642450, 96709, 57239, 53487, 43775, 0], "base": 4305445}, {"title": "윈터스파클", "publisher": "스텔라컨텐츠", "pubDate": "2024-12-01", "settleDay": "매월 25일", "advance": 0, "hist": [47605, 16765, 32290, 15676, 37586, 19909, 0], "base": 2000000}, {"title": "심연 가이드", "publisher": "넥스트페이지", "pubDate": "2026-08-20", "settleDay": "매월 말일 (익익월 정산)", "advance": 4835000, "hist": [0, 0, 0, 0, 0, 0, 0], "base": 4835000}, {"title": "리프 나이트 폭스", "publisher": "미등록", "pubDate": "2023-01-01", "settleDay": "미등록", "advance": 0, "hist": [6218, 1779, 0, 0, 0, 0, 0], "base": 11505}, {"title": "연말앤솔", "publisher": "미등록", "pubDate": "2023-01-01", "settleDay": "미등록", "advance": 0, "hist": [2452, 0, 428, 0, 0, 0, 0], "base": 273964}, {"title": "딥블앤솔", "publisher": "미등록", "pubDate": "2023-01-01", "settleDay": "미등록", "advance": 0, "hist": [0, 0, 0, 0, 0, 0, 0], "base": 200046}, {"title": "빛좋은 살구", "publisher": "넥스트페이지", "pubDate": "2026-01-10", "settleDay": "매월 말일", "advance": 0, "hist": [0, 0, 0, 0, 0, 0, 0], "base": 536305}];
+/* 기타 인세 (작품 외 수입) — 월별 */
+let OTHER_ROYALTY=[0,0,0,0,0,0,0];
+const TODAY='2026-07-16';
+/* 작품 상태: 판매종료(수동) > 출간전(출간일 미도래, 자동) > 판매중(자동) */
+function workStatus(w){
+  if(w.ended)return'판매종료';
+  const d=(w.pubDate||'').slice(0,10);
+  return (!/^\d{4}-\d{2}-\d{2}$/.test(d)||d>TODAY)?'출간전':'판매중';
+}
+const STATUS_ORDER={'판매중':0,'출간전':1,'판매종료':2};
+const workCum=w=>w.base+w.hist.reduce((s,v)=>s+v,0);
+const advanceUsed=w=>w.hist.reduce((s,v)=>s+v,0);
+const advanceLeft=w=>Math.max(0,w.advance-advanceUsed(w));
+/* 해당 월 실제 입금액: 선인세 작품은 선인세 소진 전까지 입금 0 */
+function workDeposit(w,i){
+  if(!w.advance)return w.hist[i];
+  const before=w.hist.slice(0,i).reduce((s,v)=>s+v,0);
+  const after=before+w.hist[i];
+  if(after<=w.advance)return 0;
+  return after-Math.max(before,w.advance);
+}
+const monthDeposit=i=>WORKS.reduce((s,w)=>s+workDeposit(w,i),0)+OTHER_ROYALTY[i];
+const monthSettle=i=>WORKS.reduce((s,w)=>s+w.hist[i],0)+OTHER_ROYALTY[i];
+/* 월평균: 첫 정산 발생 월부터 계산 */
+function workAvg(w){
+  const first=w.hist.findIndex(v=>v>0);
+  if(first<0)return null;
+  return w.hist.slice(first).reduce((s,v)=>s+v,0)/(w.hist.length-first);
+}
+/* 축약 표기 (그래프 라벨용) */
+const kfmt=n=>n===0?'0':(n>=100000000?(n/100000000).toFixed(1)+'억':(n/10000).toFixed(1)+'만');
+
+/* ============ 상태 ============ */
+const MKEYS=Object.keys(MONTHLY); /* 결산 가능 월 (1~6월) */
+let tab='home',filterCat='전체',sortKey='date',sortDir=-1,royaltyWork=null,royaltySeg='monthly',royaltyMonthIdx=MLABELS.length-1,settleIdx=MKEYS.length-1,royaltyYear='2026',settleSeg='month',listMonthIdx=MLABELS.length-1,investMonthIdx=MLABELS.length-1,investItem=null,investAcc=null,yearCat=null,investSeg='month';
+
+const $=s=>document.querySelector(s);
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1900);}
+function livingTotal(mi){return TXNS.filter(t=>t.category!=='인세 지출'&&(mi===undefined||txnM(t)===mi)).reduce((s,t)=>s+t.amount,0);} /* 인세 지출 분류 제외 */
+function welfareUsed(){return TXNS.filter(t=>t.welfare).reduce((s,t)=>s+t.amount,0);}
+function unclassCount(){return TXNS.filter(t=>!t.category).length;}
+
+function render(){
+  renderHeader();renderNav();
+  const m=$('#main');
+  if(tab==='home')m.innerHTML=viewHome();
+  else if(tab==='list')m.innerHTML=viewList();
+  else if(tab==='settle')m.innerHTML=viewSettle();
+  else if(tab==='invest')m.innerHTML=investItem!==null?viewInvestItem():investAcc!==null?viewAccountDetail():viewInvest();
+  else if(tab==='royalty')m.innerHTML=royaltyWork?viewWorkDetail():viewRoyalty();
+  else if(tab==='settings')m.innerHTML=viewSettings();
+  /* 스크롤 위치 유지 — 페이지 전환 시에만 scrollTop() 호출 */
+}
+function scrollTop(){window.scrollTo(0,0);}
+function renderHeader(){
+  /* 타이틀바: 타이틀 + 설정 버튼만 */
+  const titles={home:'홈',list:'지출',settle:'결산',invest:investItem!==null?ISA_ITEMS[investItem].name:investAcc!==null?ACCOUNTS[investAcc].name:'투자',royalty:royaltyWork?royaltyWork:'인세',settings:'설정'};
+  const back=(royaltyWork&&tab==='royalty')?`<button class="back" onclick="backWork()">‹</button>`:((investItem!==null||investAcc!==null)&&tab==='invest')?`<button class="back" onclick="backItem()">‹</button>`:'';
+  const left=`<h1>${back}${titles[tab]}</h1>`;
+  $('#header').innerHTML=`${left}<button class="gear" onclick="go('settings')">${IC.gear}</button>`;
+}
+function renderNav(){
+  const uc=unclassCount();
+  const items=[['home',IC.home,'홈'],['settle',IC.chart,'결산'],['list',IC.list,'지출',uc],['invest',IC.trend,'투자'],['royalty',IC.pen,'인세']];
+  $('#nav').innerHTML=items.map(it=>`<button class="${tab===it[0]?'on':''}" onclick="go('${it[0]}')">${it[1]}${it[2]}${it[3]?`<span class="badge" style="position:absolute;top:-3px;right:12px">${it[3]}</span>`:''}</button>`).join('');
+}
+function go(t){tab=t;if(t!=='royalty')royaltyWork=null;if(t!=='invest'){investItem=null;investAcc=null;}render();scrollTop();}
+function backWork(){royaltyWork=null;render();scrollTop();}
+function backItem(){investItem=null;investAcc=null;render();scrollTop();}
+function openInvestItem(i,ev){if(ev)ev.stopPropagation();investItem=i;investAcc=null;render();scrollTop();}
+function openAccountDetail(i){investAcc=i;investItem=null;render();scrollTop();}
+/* 좌우 스와이프 → 월 이동 (월 구분이 있는 탭) */
+function swipeMonth(dir){
+  const move=(cur,max)=>{const n=cur+dir;return(n<0||n>max)?null:n;};
+  if(tab==='settle'&&settleSeg==='month'){const n=move(settleIdx,MKEYS.length-1);if(n===null){toast(dir>0?'다음 달 데이터 없음':'이전 달 데이터는 연동 후 제공');return;}settleIdx=n;render();}
+  else if(tab==='royalty'&&!royaltyWork&&royaltySeg==='monthly'){const n=move(royaltyMonthIdx,MLABELS.length-1);if(n===null)return;royaltyMonthIdx=n;render();}
+  else if(tab==='list'){const n=move(listMonthIdx,MLABELS.length-1);if(n===null){toast(dir>0?'다음 달 데이터 없음':'이전 달 데이터는 연동 후 제공');return;}listMonthIdx=n;render();}
+  else if(tab==='invest'&&investSeg==='month'){const n=move(investMonthIdx,MLABELS.length-1);if(n===null){toast(dir>0?'다음 달 데이터 없음':'이전 달 데이터는 연동 후 제공');return;}investMonthIdx=n;render();}
+}
+function setSettle(i){settleIdx=i;render();}
+function swipeList(d){tab='list';swipeMonth(d);}
+function swipeInvest(d){tab='invest';swipeMonth(d);}
+
+/* ============ 홈 ============ */
+function spentByCat(){const m={};TXNS.forEach(t=>{if(t.category)m[t.category]=(m[t.category]||0)+t.amount;});return m;}
+
+/* 홈 체크리스트 수동 체크 상태 — 체크 시 날짜 기록 */
+let HOME_CHECKS={invest:null,royalty:null,allowance:null};
+function toggleCheck(k,ev){
+  ev.stopPropagation();
+  HOME_CHECKS[k]=HOME_CHECKS[k]?null:(+TODAY.slice(5,7))+'/'+(+TODAY.slice(8,10));
+  render();toast(HOME_CHECKS[k]?'완료 체크':'체크 해제');
+}
+
+function viewHome(){
+  const total=livingTotal(MLABELS.length-1); /* 이번 달(7월) */
+  const uc=unclassCount();
+  const checks=[
+   {st:'done',tx:'카드 내역 업로드',hint:'7/16 · 18건',go:'list'},
+   {st:uc?'warn':'done',tx:'지출 분류',hint:uc?`미분류 ${uc}건`:'완료',go:'list'},
+   {key:'invest',st:HOME_CHECKS.invest?'done':'todo',tx:'투자 입력',hint:HOME_CHECKS.invest||'',go:'invest'},
+   {key:'royalty',st:HOME_CHECKS.royalty?'done':'todo',tx:'인세 정산 입력',hint:HOME_CHECKS.royalty||'',go:'royalty'},
+   {key:'allowance',st:HOME_CHECKS.allowance?'done':'todo',tx:'부모님 용돈 입금',hint:HOME_CHECKS.allowance||''},
+  ];
+  /* 결산 대시보드 — 최근 마감월(6월) 기준 */
+  const li=MKEYS.length-1, lk=MKEYS[li], lym=ymOf(li);
+  const inc6=INCOMES[lk], incSum6=inc6.salary+inc6.etc.reduce((s,x)=>s+x.amount,0);
+  const sav6=SAVINGS.filter(s=>savActive(s,lym)).reduce((s,x)=>s+savAmount(x,lym),0);
+  const fix6=fixedInMonth(li).reduce((s,x)=>s+x.amount,0);
+  /* 지출 추이 */
+  const trendVals=[...MKEYS.map(k=>MONTHLY[k].living),total];
+  const maxT=Math.max(...trendVals);
+  /* 인세 통계 */
+  const rySumYear=MLABELS.reduce((s,_,i)=>s+monthDeposit(i),0);
+  return `
+  <div class="sect" style="margin-top:8px">7월 결산 체크리스트 <span class="sub">마감 8월 1일</span></div>
+  <div class="card">
+    ${checks.map(c=>`<div class="check ${c.st}" onclick="${c.go?`go('${c.go}')`:''}">
+      <div class="st" ${c.key?`onclick="toggleCheck('${c.key}',event)"`:''}>${c.st==='done'?'✓':c.st==='warn'?'!':'·'}</div>
+      <div class="tx">${c.tx}</div><span class="hint">${c.hint||(c.key?'○ 체크':'')}</span><span class="goarr">${c.go?'›':''}</span>
+    </div>`).join('')}
+  </div>
+
+  <div class="sect">결산 <span class="more" onclick="go('settle')">전체 ›</span></div>
+  <div class="card" style="padding:13px 16px">
+    <div class="setrow"><span class="lbl" style="color:var(--sub);font-weight:600">${lk} 마감 기준</span><span></span></div>
+    <div class="setrow"><span class="lbl">수입</span><span class="val pos">+ ${fmt(incSum6)}원</span></div>
+    <div class="setrow"><span class="lbl">저축·투자</span><span class="val">${fmt(sav6)}원</span></div>
+    <div class="setrow"><span class="lbl">고정지출</span><span class="val">${fmt(fix6)}원</span></div>
+    <div class="setrow"><span class="lbl">생활비</span><span class="val">${fmt(MONTHLY[lk].living)}원</span></div>
+    <div class="setrow"><span class="lbl">인세 입금</span><span class="val pos">+ ${fmt(monthDeposit(li))}원</span></div>
+  </div>
+
+  <div class="sect">지출 <span class="more" onclick="go('list')">내역 ›</span></div>
+  <div class="card">
+    <h3>이번 달 지출 합계</h3>
+    <div class="big-num">${fmt(total)}<span style="font-size:15px;color:var(--sub)">원</span></div>
+    ${uc?`<div class="sub" style="margin-top:3px">미분류 ${uc}건</div>`:''}
+  </div>
+  <div class="card">
+    <h3>월별 지출 추이</h3>
+    <div class="chart" style="height:150px;gap:8px">
+      ${trendVals.map((v,i)=>`<div class="col"><span class="cv" style="font-size:10.5px">${kfmt(v)}</span><i style="height:${Math.max(4,v/maxT*100)}%;max-width:34px;background:${i===trendVals.length-1?'var(--accent)':'#cfdcd4'}"></i><span style="font-size:11px">${i<MKEYS.length?MKEYS[i]:'7월'}</span></div>`).join('')}
+    </div>
+  </div>
+
+  ${(()=>{
+    let ivLast=-1; MLABELS.forEach((_,i)=>{if(invTotVal(i)!=null)ivLast=i;});
+    const iv=ivLast>=0?invTotVal(ivLast):null, id=invTotDep(ivLast>=0?ivLast:0), ir=iv==null?null:((iv+invTotDiv()-id)/id*100);
+    const divYear=MLABELS.reduce((s,_,i)=>s+ISA_ITEMS.reduce((a,it)=>a+(it.divs[i]||0),0),0);
+    const needInput=invTotVal(MLABELS.length-1)==null;
+    return `
+  <div class="sect">투자 <span class="more" onclick="go('invest')">전체 ›</span></div>
+  <div class="card" style="padding:13px 16px">
+    <div class="setrow"><span class="lbl">총 평가금 (${ivLast>=0?MLABELS[ivLast]:'-'})</span><span class="val">${iv==null?'-':fmt(iv)+'원'} ${ir!=null?`<b class="${ir>=0?'pos':'neg'}" style="font-size:12px">${ir>=0?'+':''}${ir.toFixed(1)}%</b>`:''}</span></div>
+    <div class="setrow"><span class="lbl">총 원금</span><span class="val">${fmt(id)}원</span></div>
+    <div class="setrow"><span class="lbl">올해 배당금</span><span class="val">${fmt(divYear)}원</span></div>
+    ${needInput?`<div class="setrow" style="cursor:pointer" onclick="go('invest')"><span class="lbl" style="color:var(--amber);font-weight:700">${MLABELS[MLABELS.length-1]} 평가금 입력 필요</span><span class="val" style="color:var(--amber)">›</span></div>`:''}
+  </div>`;})()}
+
+  <div class="sect">인세 <span class="more" onclick="go('royalty')">전체 ›</span></div>
+  <div class="card" style="padding:13px 16px">
+    <div class="setrow"><span class="lbl">이번 달 입금</span><span class="val pos">+ ${fmt(monthDeposit(MLABELS.length-1))}원</span></div>
+    <div class="setrow"><span class="lbl">올해 누적</span><span class="val">${fmt(rySumYear)}원</span></div>
+    <div class="setrow"><span class="lbl">전체 누적</span><span class="val">${fmt(WORKS.reduce((s,w)=>s+workCum(w),0))}원</span></div>
+    <div class="setrow"><span class="lbl">인세용 자유적금 잔고</span><span class="val">${fmt(rySavingBalance(MKEYS.length-1))}원</span></div>
+  </div>`;
+}
+
+/* ============ 지출 ============ */
+function viewList(){
+  const mi=listMonthIdx;
+  const monthTxns=TXNS.filter(t=>txnM(t)===mi);
+  const uc=monthTxns.filter(t=>!t.category).length;
+  const monthRow=`<div class="month-row"><button onclick="swipeMonth(-1)">‹</button><span>2026년 ${MLABELS[mi]}</span><button onclick="swipeMonth(1)">›</button></div>`;
+  if(monthTxns.length===0){
+    return `${monthRow}
+    <div class="card" style="text-align:center;padding:36px 16px">
+      <b style="font-size:15px">${MLABELS[mi]} 상세 내역 없음</b>
+      <div class="sub" style="margin-top:6px">생활비 합계 ${fmt(MONTHLY[MLABELS[mi]]?MONTHLY[MLABELS[mi]].living:0)}원 · 상세 거래는 데이터 연동 후 표시</div>
+    </div>`;
+  }
+  const cats=['전체','미분류',...CATS.filter(c=>monthTxns.some(t=>t.category===c.name)).map(c=>c.short)];
+  let list=monthTxns.filter(t=>filterCat==='전체'?true:filterCat==='미분류'?!t.category:catShort(t.category)===filterCat);
+  list=[...list].sort((a,b)=>{
+    let r=0;
+    if(sortKey==='date')r=a.date.localeCompare(b.date)||a.id-b.id;
+    else if(sortKey==='amount')r=a.amount-b.amount;
+    else if(sortKey==='category')r=(a.category||'ㅎ').localeCompare(b.category||'ㅎ');
+    return r*sortDir;
+  });
+  const total=list.reduce((s,t)=>s+t.amount,0);
+  const arrow=k=>sortKey===k?(sortDir===1?' ▲':' ▼'):'';
+  return `
+  ${monthRow}
+  <div class="toolbar">
+    <button class="primary" onclick="openImport()">${IC.up}카드 내역 가져오기</button>
+    <button onclick="openManual()">${IC.plus}수동 입력</button>
+    <button onclick="exportCsv()">${IC.dl}CSV</button>
+  </div>
+  <div class="filters">${cats.map(c=>`<button class="fchip ${filterCat===c?'on':''} ${c==='미분류'&&uc?'alert':''}" onclick="setFilter('${c}')">${c}${c==='미분류'&&uc?` ${uc}`:''}</button>`).join('')}</div>
+  <div class="tablewrap">
+    <table class="data">
+      <thead><tr>
+        <th onclick="setSort('date')">날짜${arrow('date')}</th><th>적요</th>
+        <th class="num" onclick="setSort('amount')">금액${arrow('amount')}</th>
+        <th onclick="setSort('category')">지출구분${arrow('category')}</th><th>태그</th><th>메모</th>
+      </tr></thead>
+      <tbody>
+      ${list.map(t=>`<tr class="${!t.category?'unclass':''}">
+        <td class="sub">${t.date.slice(5).replace('-','.')}</td>
+        <td class="desc" title="${t.desc}" onclick="openManual(${t.id})">${t.desc}</td>
+        <td class="num ${t.amount<0?'pos':''}">${fmt(t.amount)}</td>
+        <td><select class="catsel" onchange="setCat(${t.id},this.value)">
+          <option value="">${!t.category?'⚠ 선택':'—'}</option>
+          ${CATS.map(c=>`<option value="${c.name}" ${t.category===c.name?'selected':''}>${c.short}</option>`).join('')}
+        </select></td>
+        <td>${t.welfare==='복지_카드'?'<span class="chip wc">복지카드</span>':t.welfare==='복지_포인트'?'<span class="chip wp">복지포인트</span>':''}</td>
+        <td class="sub">${t.memo||''}</td>
+      </tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="tfoot"><span>${list.length}건${uc&&filterCat==='전체'?` · <b style="color:var(--amber)">미분류 ${uc}건</b>`:''}</span><b style="color:var(--ink);font-size:13.5px">합계 ${fmt(total)}원</b></div>
+  </div>
+  <div class="note">열 제목 클릭 = 정렬 · 지출구분 셀에서 바로 분류 · 적요 클릭 = 상세 수정</div>`;
+}
+function setFilter(c){filterCat=c;render();}
+/* CSV 다운로드 — 현재 월 내역 */
+function exportCsv(){
+  const mi=listMonthIdx;
+  const rows=TXNS.filter(t=>txnM(t)===mi).sort((a,b)=>a.date.localeCompare(b.date));
+  if(!rows.length){toast('내보낼 내역이 없습니다');return;}
+  const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  const csv='﻿'+[['날짜','적요','금액','지출구분','태그','메모'],
+    ...rows.map(t=>[t.date,t.desc,t.amount,t.category,t.welfare,t.memo])]
+    .map(r=>r.map(esc).join(',')).join('\r\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download=`지출_2026_${String(mi+1).padStart(2,'0')}월.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('CSV 다운로드 완료');
+}
+function setSort(k){if(sortKey===k)sortDir*=-1;else{sortKey=k;sortDir=-1;}render();}
+function setCat(id,v){TXNS.find(x=>x.id===id).category=v;toast(v?`'${catShort(v)}' 분류 완료`:'미분류로 변경');render();}
+
+/* ============ 결산 ============ */
+function setSseg(s){settleSeg=s;render();scrollTop();}
+
+function viewSettle(){
+  if(settleSeg==='year')return viewSettleYear();
+  const label=MKEYS[settleIdx];
+  const m=MONTHLY[label];
+  const inc=INCOMES[label]||{salary:0,etc:[]};
+  const incomeSum=inc.salary+inc.etc.reduce((s,x)=>s+x.amount,0);
+  const ym=ymOf(settleIdx);
+  const savingList=SAVINGS.filter(s=>savActive(s,ym));
+  const savingSum=savingList.reduce((s,x)=>s+savAmount(x,ym),0);
+  const fixedList=fixedInMonth(settleIdx);
+  const fixedSum=fixedList.reduce((s,x)=>s+x.amount,0);
+  /* 해당 월 카테고리별 생활비 (실데이터), 금액 큰 순 */
+  const catRows=Object.entries(CAT_MONTHLY).map(([k,arr])=>[k,arr[settleIdx]]).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+  const rdep=monthDeposit(settleIdx), rspend=rySpend(settleIdx), ry=RY_MONTH[settleIdx];
+  return `
+  <div class="seg"><button class="${settleSeg==='month'?'on':''}" onclick="setSseg('month')">월 결산</button><button class="${settleSeg==='year'?'on':''}" onclick="setSseg('year')">연간 통계</button></div>
+  <div class="month-row">
+    <button onclick="swipeMonth(-1)">‹</button><span>2026년 ${label}</span><button onclick="swipeMonth(1)">›</button>
+  </div>
+  <div class="card hero">
+    <h3 class="big">${label} 마감 요약</h3>
+    <div class="hrow"><span>수입</span><b class="up">+ ${fmt(incomeSum)}원</b></div>
+    <div class="hrow"><span>저축·투자</span><b>${fmt(savingSum)}원</b></div>
+    <div class="hrow"><span>고정지출</span><b>${fmt(fixedSum)}원</b></div>
+    <div class="hrow"><span>생활비</span><b>${fmt(m.living)}원</b></div>
+    <div class="hrow"><span>인세 입금</span><b class="up">+ ${fmt(rdep)}원</b></div>
+    <div class="hrow dim"><span>순증감</span><b>${fmt(incomeSum-savingSum-fixedSum-m.living)}원</b></div>
+    <div class="hrow dim"><span>통장 잔고</span><b>32,031,580원</b></div>
+  </div>
+  <div class="card">
+    <div class="setrow head"><span class="lbl">수입</span><span class="val pos">+ ${fmt(incomeSum)}원</span></div>
+    <div class="setrow indent" style="cursor:pointer" onclick="openSalaryEdit()"><span class="lbl">월급</span><span class="val">${fmt(inc.salary)}원 ›</span></div>
+    ${inc.etc.map((e,i)=>`<div class="setrow indent" style="cursor:pointer" onclick="openEtcEdit(${i})"><span class="lbl">${e.name}</span><span class="val">${fmt(e.amount)}원 ›</span></div>`).join('')}
+    <div class="setrow indent" style="cursor:pointer" onclick="openEtcEdit()"><span class="lbl" style="color:var(--accent);font-weight:700">＋ 기타 수입 추가</span><span></span></div>
+  </div>
+  <div class="card">
+    <div class="setrow head"><span class="lbl">저축·투자 원금</span><span class="val">${fmt(savingSum)}원</span></div>
+    ${savingList.map(s=>{const i=SAVINGS.indexOf(s),amt=savAmount(s,ym),mat=isMaturityMonth(s,ym);
+    return `<div class="setrow indent" style="cursor:pointer" onclick="openSavingEdit(${i})">
+      <span class="lbl">${s.inst} ${s.type}${mat?'<span class="tag rr">만기 해지</span>':''}${!mat&&s.type==='적금'?`<span class="tag">${s.subtype==='자유'?'자유':'정기'}</span>`:''}${!mat&&s.maturity?`<span class="tag">만기 ${s.maturity.slice(2,7).replace('-','.')}</span>`:''}</span>
+      <span class="val ${amt<0?'neg':''}">${fmt(amt)}원 ›</span></div>`;}).join('')}
+    <div class="setrow indent" style="cursor:pointer" onclick="openSavingEdit()"><span class="lbl" style="color:var(--accent);font-weight:700">＋ 저축 등록</span><span></span></div>
+  </div>
+  <div class="card">
+    <div class="setrow head"><span class="lbl">고정지출</span><span class="val">${fmt(fixedSum)}원</span></div>
+    ${fixedList.map(s=>{const i=FIXED.indexOf(s);
+    return `<div class="setrow indent" style="cursor:pointer" onclick="openFixedEdit(${i})"><span class="lbl">${s.name}${s.end?`<span class="tag">~${s.end.slice(2).replace('-','.')}</span>`:''}</span><span class="val">${fmt(s.amount)}원 ›</span></div>`;}).join('')}
+    <div class="setrow indent" style="cursor:pointer" onclick="openFixedEdit()"><span class="lbl" style="color:var(--accent);font-weight:700">＋ 고정지출 등록</span><span></span></div>
+  </div>
+  <div class="card">
+    <div class="setrow head"><span class="lbl">생활비<small>카테고리별 합산</small></span><span class="val">${fmt(m.living)}원</span></div>
+    ${catRows.map(([k,v])=>`<div class="setrow indent"><span class="lbl" style="display:flex;align-items:center">${cico(k)}${k}</span><span class="val">${fmt(v)}원</span></div>`).join('')}
+    <div style="display:flex;justify-content:space-between;margin-top:8px" class="sub">
+      <span>예산 ${fmt(BUDGET_TOTAL)}원 대비</span>
+      <b class="${m.living<=BUDGET_TOTAL?'pos':'neg'}">${m.living<=BUDGET_TOTAL?'▼':'▲'} ${fmt(Math.abs(BUDGET_TOTAL-m.living))}원 ${m.living<=BUDGET_TOTAL?'절약':'초과'}</b>
+    </div>
+  </div>
+  <div class="card">
+    <div class="setrow head"><span class="lbl">인세</span><span class="val pos">+ ${fmt(rdep)}원</span></div>
+    <div class="setrow indent"><span class="lbl">인세 입금</span><span class="val">${fmt(rdep)}원</span></div>
+    <div class="setrow indent"><span class="lbl">인세 통장 지출</span><span class="val">− ${fmt(rspend)}원</span></div>
+    <div class="setrow indent" style="cursor:pointer" onclick="openRyEdit()"><span class="lbl">기부</span><span class="val">− ${fmt(ry.don)}원 ›</span></div>
+    <div class="setrow indent" style="cursor:pointer" onclick="openRyEdit()"><span class="lbl">인세 통장 이자</span><span class="val">+ ${fmt(ry.int)}원 ›</span></div>
+    <div class="setrow indent" style="cursor:pointer" onclick="openRyEdit()"><span class="lbl">인세 적금 입금</span><span class="val">${fmt(ry.save)}원 ›</span></div>
+  </div>`;
+}
+
+/* 결산 — 연간 통계 (월 결산 블록 순서: 수입 → 저축 → 고정지출 → 생활비 → 인세) */
+function viewSettleYear(){
+  const incSum=MKEYS.reduce((s,k)=>{const i=INCOMES[k];return s+(i?i.salary+i.etc.reduce((a,x)=>a+x.amount,0):0);},0);
+  const savSum=MKEYS.reduce((s,k,i)=>{const ym=ymOf(i);return s+SAVINGS.filter(x=>savActive(x,ym)).reduce((a,x)=>a+savAmount(x,ym),0);},0);
+  const fixSum=MKEYS.reduce((s,_,i)=>s+fixedInMonth(i).reduce((a,x)=>a+x.amount,0),0);
+  const livSum=MKEYS.reduce((s,k)=>s+MONTHLY[k].living,0);
+  const rySum=MKEYS.reduce((s,_,i)=>s+monthDeposit(i),0);
+  const donSum=RY_MONTH.reduce((s,x)=>s+x.don,0);
+  const maxL=Math.max(...MKEYS.map(k=>MONTHLY[k].living));
+  const maxI=Math.max(...MKEYS.map(k=>{const x=INCOMES[k];return x?x.salary+x.etc.reduce((a,e)=>a+e.amount,0):0;}));
+  const maxS=Math.max(...MKEYS.map(k=>MONTHLY[k].saving));
+  /* 카테고리 연간 합산 상위 */
+  const catYear=Object.entries(CAT_MONTHLY).map(([k,arr])=>[k,arr.reduce((s,v)=>s+v,0)]).sort((a,b)=>b[1]-a[1]);
+  const maxC=catYear[0][1];
+  return `
+  <div class="seg"><button class="${settleSeg==='month'?'on':''}" onclick="setSseg('month')">월 결산</button><button class="${settleSeg==='year'?'on':''}" onclick="setSseg('year')">연간 통계</button></div>
+  <div class="card hero">
+    <div class="hstats">
+      <div class="hs"><span>올해 수입</span><b>${fmt(incSum)}원</b></div>
+      <div class="hs"><span>올해 저축·투자</span><b>${fmt(savSum)}원</b></div>
+      <div class="hs"><span>올해 생활비</span><b>${fmt(livSum)}원</b></div>
+    </div>
+  </div>
+  <div class="card"><h3>수입 월별 추이</h3>
+    <div class="chart" style="height:110px">${MKEYS.map((k,i)=>{const x=INCOMES[k],v=x?x.salary+x.etc.reduce((a,e)=>a+e.amount,0):0;
+    return `<div class="col" onclick="setSettle(${i});setSseg('month')"><span class="cv">${kfmt(v)}</span><i style="height:${Math.max(4,v/maxI*100)}%;background:#cfdcd4"></i><span>${k}</span></div>`;}).join('')}</div>
+  </div>
+  <div class="card"><h3>저축·투자 월별 추이</h3>
+    <div class="chart" style="height:110px">${MKEYS.map((k,i)=>`<div class="col" onclick="setSettle(${i});setSseg('month')"><span class="cv">${kfmt(MONTHLY[k].saving)}</span><i style="height:${Math.max(4,MONTHLY[k].saving/maxS*100)}%;background:#cfdcd4"></i><span>${k}</span></div>`).join('')}</div>
+  </div>
+  <div class="card"><h3>생활비 월별 추이 <span class="sub">월평균 ${fmt(livSum/MKEYS.length)}원</span></h3>
+    <div class="chart" style="height:130px">${MKEYS.map((k,i)=>`<div class="col" onclick="setSettle(${i});setSseg('month')"><span class="cv">${kfmt(MONTHLY[k].living)}</span><i style="height:${Math.max(4,MONTHLY[k].living/maxL*100)}%"></i><span>${k}</span></div>`).join('')}</div>
+  </div>
+  <div class="card"><h3>카테고리별 연간 합산 <span class="sub">탭하면 아래에 월별 추이</span></h3>
+    ${catYear.slice(0,8).map(([k,v])=>`<div style="padding:5px 0;cursor:pointer;${(yearCat||catYear[0][0])===k?'background:var(--accent-soft);border-radius:6px;padding:5px 8px;margin:0 -8px':''}" onclick="yearCat='${k}';render()">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px"><span style="font-weight:600;display:flex;align-items:center">${cico(k)}${k}</span><b>${fmt(v)}원</b></div>
+      <div class="minibar" style="margin-top:3px"><i style="width:${v/maxC*100}%"></i></div>
+    </div>`).join('')}
+    ${catYear.length>8?`<div class="sub" style="margin-top:6px;font-size:11.5px">외 ${catYear.length-8}개 카테고리</div>`:''}
+  </div>
+  ${(()=>{const sel=yearCat||catYear[0][0];const arr=CAT_MONTHLY[sel]||[];const mx=Math.max(...arr,1);
+  return `<div class="card"><h3><span style="display:flex;align-items:center;color:var(--ink)">${cico(sel)}${sel} 월별 추이</span><span class="sub">월평균 ${fmt(arr.reduce((s,v)=>s+v,0)/arr.length)}원</span></h3>
+    <div class="chart" style="height:110px">${arr.map((v,i)=>`<div class="col" onclick="setSettle(${i});setSseg('month')"><span class="cv">${kfmt(v)}</span><i style="height:${Math.max(3,v/mx*100)}%"></i><span>${MKEYS[i]}</span></div>`).join('')}</div>
+  </div>`;})()}
+  <div class="card" style="padding:13px 16px">
+    <div class="setrow"><span class="lbl">올해 고정지출<small>월평균 ${fmt(fixSum/MKEYS.length)}원</small></span><span class="val">${fmt(fixSum)}원</span></div>
+    <div class="setrow"><span class="lbl">올해 인세 입금</span><span class="val pos">+ ${fmt(rySum)}원</span></div>
+    <div class="setrow"><span class="lbl">올해 기부</span><span class="val">${fmt(donSum)}원</span></div>
+  </div>`;
+}
+
+/* 저축 등록/수정 */
+let editSavingIdx=null;
+function openSavingEdit(idx){
+  editSavingIdx=(idx===undefined)?null:idx;
+  const s=editSavingIdx==='ry'?RY_SAVING:(editSavingIdx!==null?SAVINGS[editSavingIdx]:null);
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>${s?'저축 수정':'저축 등록'}<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="flabel">은행 / 증권사</div>
+  <div class="frow"><input type="text" id="sInst" placeholder="예: 신한은행, KB증권" value="${s?s.inst:''}"></div>
+  <div class="flabel">유형</div>
+  <div class="frow">
+    <select id="sType" onchange="$('#subWrap').style.display=this.value==='적금'?'flex':'none';var l=$('#sAmtLabel');if(l)l.textContent=amtLabel()">
+      ${['적금','예금','발행어음','투자원금'].map(t=>`<option ${s&&s.type===t?'selected':''}>${t}</option>`).join('')}
+    </select>
+  </div>
+  <div class="frow" id="subWrap" style="display:${!s||s.type==='적금'?'flex':'none'}">
+    <select id="sSub" onchange="var l=$('#sAmtLabel');if(l)l.textContent=amtLabel()">
+      <option value="정기" ${s&&s.subtype!=='자유'?'selected':''}>정기 적금 (매월 자동 입력)</option>
+      <option value="자유" ${s&&s.subtype==='자유'?'selected':''}>자유 적금 (매월 직접 입력)</option>
+    </select>
+  </div>
+  <div class="flabel">시작월 · 만기일</div>
+  <div class="frow"><input type="month" id="sStart" value="${s?(s.start||''):''}"><input type="date" id="sMat" value="${s?s.maturity:''}"></div>
+  <div class="flabel" id="sAmtLabel">월 납입액 (매월 자동 반영)</div>
+  <div class="frow"><input type="number" id="sAmt" placeholder="0" value="${s?s.monthly:''}"></div>
+  ${s&&isMaturityMonth(s,ymOf(settleIdx))?`
+  <div class="flabel">만기 해지 금액 (자동 계산: ${fmt(-(s.monthly*monthsBetween(s.start||ymOf(settleIdx),s.maturity)))}원 · 수기 수정 가능)</div>
+  <div class="frow"><input type="number" id="sOver" value="${s.maturityOverride!==undefined?s.maturityOverride:-(s.monthly*monthsBetween(s.start||ymOf(settleIdx),s.maturity))}"></div>`:''}
+  <button class="save-btn" onclick="saveSaving()">${s?'수정 저장':'등록'}</button>
+  ${s?`<button class="save-btn ghost" onclick="delSaving()">삭제</button>`:''}`;
+  openSheetEl();
+}
+function amtLabel(){
+  const t=$('#sType').value;
+  if(t==='적금'&&$('#sSub').value==='자유')return'이번 달 입금액 (매월 직접 입력)';
+  if(t==='적금')return'월 납입액 (매월 자동 반영)';
+  if(t==='투자원금')return'이번 달 투자 원금';
+  return'입금액';
+}
+function saveSaving(){
+  const type=$('#sType').value;
+  const data={inst:$('#sInst').value,type,subtype:type==='적금'?$('#sSub').value:'',start:$('#sStart').value,maturity:$('#sMat').value,monthly:+$('#sAmt').value||0};
+  if(!data.inst){toast('은행/증권사를 입력하세요');return;}
+  const over=$('#sOver');
+  if(over&&over.value!=='')data.maturityOverride=+over.value;
+  if(editSavingIdx!==null&&editSavingIdx!=='ry')SAVINGS[editSavingIdx]=data; else SAVINGS.push(data);
+  closeSheet();toast(editSavingIdx!==null?'수정되었습니다':'등록되었습니다');render();
+}
+function delSaving(){SAVINGS.splice(editSavingIdx,1);closeSheet();toast('삭제되었습니다');render();}
+
+/* 월급 수정 */
+function openSalaryEdit(){
+  const label=MKEYS[settleIdx], inc=INCOMES[label];
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>${label} 월급 입력<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="frow"><input type="number" id="salAmt" placeholder="0" value="${inc.salary||''}"></div>
+  <button class="save-btn" onclick="INCOMES['${label}'].salary=+$('#salAmt').value||0;closeSheet();toast('저장되었습니다');render()">저장</button>`;
+  openSheetEl();
+}
+/* 기타 수입 추가/수정 */
+let editEtcIdx=null;
+function openEtcEdit(idx){
+  editEtcIdx=(idx===undefined)?null:idx;
+  const label=MKEYS[settleIdx];
+  const e=editEtcIdx!==null?INCOMES[label].etc[editEtcIdx]:null;
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>${label} 기타 수입<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="frow"><input type="text" id="etcName" placeholder="항목명 (예: 이자, 환급금)" value="${e?e.name:''}"></div>
+  <div class="frow"><input type="number" id="etcAmt" placeholder="금액" value="${e?e.amount:''}"></div>
+  <button class="save-btn" onclick="saveEtc()">${e?'수정 저장':'추가'}</button>
+  ${e?`<button class="save-btn ghost" onclick="INCOMES['${label}'].etc.splice(${editEtcIdx},1);closeSheet();toast('삭제되었습니다');render()">삭제</button>`:''}`;
+  openSheetEl();
+}
+function saveEtc(){
+  const label=MKEYS[settleIdx];
+  const data={name:$('#etcName').value||'기타',amount:+$('#etcAmt').value||0};
+  if(!data.amount){toast('금액을 입력하세요');return;}
+  if(editEtcIdx!==null)INCOMES[label].etc[editEtcIdx]=data; else INCOMES[label].etc.push(data);
+  closeSheet();toast('저장되었습니다');render();
+}
+/* 고정지출 등록/수정 */
+let editFixedIdx=null;
+function openFixedEdit(idx){
+  editFixedIdx=(idx===undefined)?null:idx;
+  const f=editFixedIdx!==null?FIXED[editFixedIdx]:null;
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>${f?'고정지출 수정':'고정지출 등록'}<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="flabel">고정지출명</div>
+  <div class="frow"><input type="text" id="fName" placeholder="예: 보험료" value="${f?f.name:''}"></div>
+  <div class="flabel">월 고정금액</div>
+  <div class="frow"><input type="number" id="fAmt" placeholder="0" value="${f?f.amount:''}"></div>
+  <div class="flabel">기간 (시작 ~ 종료, 종료 비우면 계속)</div>
+  <div class="frow"><input type="month" id="fStart" value="${f?f.start:''}"><input type="month" id="fEnd" value="${f?f.end:''}"></div>
+  <button class="save-btn" onclick="saveFixed()">${f?'수정 저장':'등록'}</button>
+  ${f?`<button class="save-btn ghost" onclick="FIXED.splice(${editFixedIdx},1);closeSheet();toast('삭제되었습니다');render()">삭제</button>`:''}`;
+  openSheetEl();
+}
+function saveFixed(){
+  const data={name:$('#fName').value,amount:+$('#fAmt').value||0,start:$('#fStart').value,end:$('#fEnd').value};
+  if(!data.name){toast('고정지출명을 입력하세요');return;}
+  if(editFixedIdx!==null)FIXED[editFixedIdx]=data; else FIXED.push(data);
+  closeSheet();toast('저장되었습니다');render();
+}
+/* 인세 통장 월 항목 (기부/이자/적금 입금) */
+function openRyEdit(){
+  const label=MKEYS[settleIdx], ry=RY_MONTH[settleIdx];
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>${label} 인세 통장 입력<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="flabel">기부 (기본 50,000원)</div>
+  <div class="frow"><input type="number" id="ryDon" value="${ry.don}"></div>
+  <div class="flabel">인세 통장 이자</div>
+  <div class="frow"><input type="number" id="ryInt" placeholder="0" value="${ry.int||''}"></div>
+  <div class="flabel">인세 적금 입금 (기본 0원)</div>
+  <div class="frow"><input type="number" id="rySave" placeholder="0" value="${ry.save||''}"></div>
+  <button class="save-btn" onclick="saveRy()">저장</button>`;
+  openSheetEl();
+}
+function saveRy(){
+  const ry=RY_MONTH[settleIdx];
+  ry.don=+$('#ryDon').value||0; ry.int=+$('#ryInt').value||0; ry.save=+$('#rySave').value||0;
+  closeSheet();toast('저장되었습니다');render();
+}
+
+/* ============ 투자 ============ */
+function setIseg(s){investSeg=s;render();scrollTop();}
+
+function viewInvest(){
+  const seg=`<div class="seg"><button class="${investSeg==='month'?'on':''}" onclick="setIseg('month')">월별 현황</button><button class="${investSeg==='year'?'on':''}" onclick="setIseg('year')">연간 통계</button></div>`;
+  return seg+(investSeg==='month'?viewInvestMonth():viewInvestYear());
+}
+
+function viewInvestMonth(){
+  const mi=investMonthIdx;
+  const dep=invTotDep(mi),val=invTotVal(mi),div=invTotDiv();
+  const rate=val==null?null:((val+div-dep)/dep*100);
+  return `
+  <div class="month-row">
+    <button onclick="swipeMonth(-1)">‹</button><span>2026년 ${MLABELS[mi]}</span><button onclick="swipeMonth(1)">›</button>
+  </div>
+  <div class="card hero">
+    <h3>총 평가금</h3>
+    <div class="big-num">${val==null?'-':fmt(val)+'원'}</div>
+    <div style="display:flex;gap:16px;margin-top:8px;font-size:12.5px">
+      <span class="sub">원금 ${fmt(dep)}원</span>
+      ${rate!=null?`<span style="color:${rate>=0?'#8fd4ac':'#f0a8a8'};font-weight:700">${rate>=0?'+':''}${rate.toFixed(1)}% (배당 포함)</span>`:'<span class="sub">평가금 입력 후 수익률 표시</span>'}
+    </div>
+  </div>
+  ${ACCOUNTS.map((a,ai)=>{const r=accRate(a,mi);
+  return `<div class="card">
+    <div class="acct" style="border-bottom:0;padding-top:2px">
+      <div class="top">
+        <b style="font-size:14.5px;cursor:pointer" onclick="openAccountDetail(${ai})">${a.name}<span class="tag">${a.tag}</span> <span class="goarr">›</span></b>
+        <b style="font-size:15px;cursor:pointer" onclick="openAccountEdit(${ai})">${fmtV(a.vals[mi])}</b>
+      </div>
+      <div class="btm" style="cursor:pointer" onclick="openAccountEdit(${ai})"><span>원금 ${fmt(a.deps[mi])}원${a.cumDiv?` · 누적배당 ${fmt(a.cumDiv)}원`:''}</span><span class="rate">${fmtR(r)}</span></div>
+    </div>
+    ${a.isa?`<div style="margin-top:6px;border-top:1px solid var(--line);padding-top:4px">
+      ${ISA_ITEMS.map((it,ii)=>{const ir=itemRate(it,mi);
+      return `<div class="acct">
+        <div class="top">
+          <b style="font-size:13px;cursor:pointer" onclick="openInvestItem(${ii})">${it.name} <span class="goarr">›</span></b>
+          <b style="cursor:pointer" onclick="openItemInput(${ii})">${fmtV(it.vals[mi])}</b>
+        </div>
+        <div class="btm" style="cursor:pointer" onclick="openItemInput(${ii})"><span>실수익률 ${fmtR(ir)}${(it.divs[mi]||0)?` · 이달 배당 ${fmt(it.divs[mi])}원`:''}</span></div>
+      </div>`;}).join('')}
+      <div class="acct" style="cursor:pointer" onclick="openItemEdit()"><div class="top"><b style="font-size:13px;color:var(--accent)">＋ 항목 추가</b></div></div>
+    </div>`:''}
+  </div>`;}).join('')}
+  <button class="save-btn" onclick="openInvestInput()">${MLABELS[mi]} 일괄 입력</button>
+  <div class="note">이름 탭 = 상세 화면 · 숫자 탭 = 입력 · 실수익률 = (평가금 + 누적배당 − 원금) / 원금</div>`;
+}
+
+/* 투자 — 연간 통계 */
+function viewInvestYear(){
+  let li=-1; MLABELS.forEach((_,i)=>{if(invTotVal(i)!=null)li=i;});
+  const val=li>=0?invTotVal(li):null, dep=invTotDep(li>=0?li:0), div=invTotDiv();
+  const rate=val==null?null:((val+div-dep)/dep*100);
+  const maxV=Math.max(...MLABELS.map((_,i)=>invTotVal(i)||0),1);
+  const divMonth=i=>ISA_ITEMS.reduce((s,it)=>s+(it.divs[i]||0),0);
+  const divYear=MLABELS.reduce((s,_,i)=>s+divMonth(i),0);
+  const maxD=Math.max(...MLABELS.map((_,i)=>divMonth(i)),1);
+  return `
+  <div class="card hero">
+    <div class="hstats">
+      <div class="hs"><span>총 원금</span><b>${fmt(dep)}원</b></div>
+      <div class="hs"><span>총 평가금 (${li>=0?MLABELS[li]:'-'})</span><b>${val==null?'-':fmt(val)+'원'}</b></div>
+      <div class="hs"><span>전체 수익률</span><b>${rate==null?'-':(rate>=0?'+':'')+rate.toFixed(1)+'%'}</b></div>
+    </div>
+  </div>
+  <div class="card"><h3>총 평가금 월별 추이</h3>
+    <div class="chart" style="height:120px">${MLABELS.map((k,i)=>{const v=invTotVal(i);
+    return `<div class="col" onclick="investMonthIdx=${i};setIseg('month')"><span class="cv">${v==null?'—':kfm2(v)}</span><i style="height:${v==null?3:Math.max(6,v/maxV*100)}%;background:${v==null?'#e5e8e6':'var(--accent)'}"></i><span>${k}</span></div>`;}).join('')}</div>
+  </div>
+  <div class="card"><h3>월별 배당금 합계 <span class="sub">올해 ${fmt(divYear)}원</span></h3>
+    <div class="chart" style="height:100px">${MLABELS.map((k,i)=>{const v=divMonth(i);
+    return `<div class="col"><span class="cv">${v?kfm2(v):'—'}</span><i style="height:${Math.max(3,v/maxD*100)}%;background:#cfdcd4"></i><span>${k}</span></div>`;}).join('')}</div>
+  </div>
+  <div class="card"><h3>계좌별 수익률 <span class="sub">${li>=0?MLABELS[li]+' 기준':''}</span></h3>
+    ${ACCOUNTS.map(a=>{const r=li>=0?accRate(a,li):null;
+    return `<div class="acct"><div class="top"><b>${a.name}<span class="tag">${a.tag}</span></b><span class="rate">${fmtR(r)}</span></div>
+    <div class="btm"><span>원금 ${fmt(a.deps[li>=0?li:0])}원</span><b style="color:var(--ink)">${li>=0&&a.vals[li]!=null?fmt(a.vals[li])+'원':'-'}</b></div></div>`;}).join('')}
+  </div>`;
+}
+
+/* 계좌 상세 화면 */
+function viewAccountDetail(){
+  const a=ACCOUNTS[investAcc], mi=investMonthIdx;
+  const r=accRate(a,mi);
+  const maxV=Math.max(...a.vals.map(v=>v||0),1);
+  return `
+  <div class="card hero">
+    <h3>현재 평가금 <span class="sub">${MLABELS[mi]}</span></h3>
+    <div class="big-num">${a.vals[mi]==null?'-':fmt(a.vals[mi])+'원'}</div>
+    <div style="display:flex;gap:16px;margin-top:8px;font-size:12.5px">
+      <span class="sub">원금 ${fmt(a.deps[mi])}원${a.cumDiv?` · 누적배당 ${fmt(a.cumDiv)}원`:''}</span>
+      ${r!=null?`<span style="color:${r>=0?'#8fd4ac':'#f0a8a8'};font-weight:700">${r>=0?'+':''}${r.toFixed(1)}%</span>`:''}
+    </div>
+  </div>
+  <div class="card"><h3>평가금 월별 추이</h3>
+    <div class="chart">${a.vals.map((v,i)=>`<div class="col" onclick="investMonthIdx=${i};render()"><span class="cv">${v==null?'—':kfm2(v)}</span><i style="height:${v==null?3:Math.max(4,v/maxV*100)}%;background:${v==null?'#e5e8e6':i===mi?'var(--accent)':'#cfdcd4'}"></i><span>${MLABELS[i]}</span></div>`).join('')}</div>
+  </div>
+  <div class="tablewrap">
+    <table class="data" style="min-width:0">
+      <thead><tr><th>월</th><th class="num">원금</th><th class="num">평가금</th><th class="num">수익률</th></tr></thead>
+      <tbody>${MLABELS.map((k,i)=>{const rr=accRate(a,i);
+      return `<tr><td class="sub">2026.${String(i+1).padStart(2,'0')}</td><td class="num">${fmt(a.deps[i])}</td><td class="num">${a.vals[i]==null?'-':fmt(a.vals[i])}</td><td class="num">${rr==null?'-':`<span class="${rr>=0?'pos':'neg'}">${rr>=0?'+':''}${rr.toFixed(1)}%</span>`}</td></tr>`;}).reverse().join('')}</tbody>
+    </table>
+  </div>
+  <button class="save-btn" onclick="openAccountEdit(${investAcc})">${MLABELS[mi]} 입력 (원금 입금 · 평가금)</button>`;
+}
+
+/* ISA 항목 상세 — 인세 작품 상세와 동일 패턴 */
+function viewInvestItem(){
+  const it=ISA_ITEMS[investItem], mi=investMonthIdx;
+  const rate=itemRate(it,mi), cumDiv=itemCumDiv(it,mi);
+  const maxV=Math.max(...it.vals.map(v=>v||0),1);
+  return `
+  <div class="card hero">
+    <h3>현재 평가금 <span class="sub">${MLABELS[mi]}</span></h3>
+    <div class="big-num">${it.vals[mi]==null?'-':fmt(it.vals[mi])+'원'}</div>
+    <div style="display:flex;gap:16px;margin-top:8px;font-size:12.5px">
+      <span class="sub">원금 ${fmt(it.deps[mi])}원</span>
+      ${rate!=null?`<span style="color:${rate>=0?'#8fd4ac':'#f0a8a8'};font-weight:700">${rate>=0?'+':''}${rate.toFixed(1)}% (배당 포함)</span>`:''}
+    </div>
+  </div>
+  <div class="card">
+    <h3>항목 정보 <span class="more" onclick="openItemEdit(${investItem})">수정</span></h3>
+    <div class="inforow"><span class="k">보유수량</span><span class="v">${fmt(it.shares)}주</span></div>
+    <div class="inforow"><span class="k">투자원금</span><span class="v">${fmt(it.deps[mi])}원</span></div>
+    <div class="inforow"><span class="k">누적 배당금</span><span class="v">${fmt(cumDiv)}원</span></div>
+    <div class="inforow"><span class="k">이번 달 배당금</span><span class="v">${fmt(it.divs[mi]||0)}원</span></div>
+  </div>
+  <div class="card"><h3>평가금 월별 추이</h3>
+    <div class="chart">${it.vals.map((v,i)=>`<div class="col" onclick="investMonthIdx=${i};render()"><span class="cv">${v==null?'—':kfm2(v)}</span><i style="height:${v==null?3:Math.max(4,v/maxV*100)}%;background:${v==null?'#e5e8e6':i===mi?'var(--accent)':'#cfdcd4'}"></i><span>${MLABELS[i]}</span></div>`).join('')}</div>
+  </div>
+  <div class="tablewrap">
+    <table class="data" style="min-width:0">
+      <thead><tr><th>월</th><th class="num">원금</th><th class="num">평가금</th><th class="num">배당금</th><th class="num">실수익률</th></tr></thead>
+      <tbody>${MLABELS.map((k,i)=>{const r=itemRate(it,i);
+      return `<tr><td class="sub">2026.${String(i+1).padStart(2,'0')}</td><td class="num">${fmt(it.deps[i])}</td><td class="num">${it.vals[i]==null?'-':fmt(it.vals[i])}</td><td class="num">${fmt(it.divs[i]||0)}</td><td class="num">${r==null?'-':`<span class="${r>=0?'pos':'neg'}">${r>=0?'+':''}${r.toFixed(1)}%</span>`}</td></tr>`;}).reverse().join('')}</tbody>
+    </table>
+  </div>
+  <button class="save-btn" onclick="openItemInput(${investItem})">${MLABELS[mi]} 입력 (원금 · 평가금 · 배당금)</button>`;
+}
+
+/* 항목 통합 입력: 원금 + 평가금 + 배당금(수량×주당) 한 번에 */
+function openItemInput(ii,ev){
+  if(ev)ev.stopPropagation();
+  const it=ISA_ITEMS[ii], mi=investMonthIdx;
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>${it.name} · ${MLABELS[mi]}<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="flabel">투자원금 (누적)</div>
+  <div class="frow"><input type="number" id="iiDep" value="${it.deps[mi]??''}"></div>
+  <div class="flabel">현재 평가금</div>
+  <div class="frow"><input type="number" id="iiVal" placeholder="입력전" value="${it.vals[mi]??''}"></div>
+  <div class="flabel">배당금 — 보유수량 × 주당 배당금</div>
+  <div class="frow">
+    <input type="number" id="iiQty" placeholder="보유수량" value="${it.shares||''}">
+    <input type="number" id="iiPer" placeholder="주당 배당금" value="${it.shares&&it.divs[mi]?Math.round(it.divs[mi]/it.shares):''}">
+  </div>
+  <div class="hl"><b>배당금 합계</b><span class="v" id="iiSum">${it.divs[mi]!=null?fmt(it.divs[mi])+'원':'0원'}</span></div>
+  <button class="save-btn" style="margin-top:12px" onclick="saveItemInput(${ii})">저장</button>`;
+  openSheetEl();
+  const upd=()=>{$('#iiSum').textContent=fmt((+$('#iiQty').value||0)*(+$('#iiPer').value||0))+'원';};
+  ['#iiQty','#iiPer'].forEach(s=>$(s).addEventListener('input',upd));
+}
+function saveItemInput(ii){
+  const it=ISA_ITEMS[ii], mi=investMonthIdx;
+  const dep=$('#iiDep').value, val=$('#iiVal').value, qty=+$('#iiQty').value||0, per=+$('#iiPer').value||0;
+  if(dep!=='')for(let i=mi;i<it.deps.length;i++)it.deps[i]=+dep;
+  if(val!=='')it.vals[mi]=+val;
+  if(qty&&per){it.shares=qty;it.divs[mi]=qty*per;}
+  else if(qty)it.shares=qty;
+  closeSheet();toast('저장되었습니다');render();
+}
+
+/* 계좌 원금 입금 + 평가금 입력 */
+let editAccIdx=null;
+function openAccountEdit(ai){
+  editAccIdx=ai;
+  const a=ACCOUNTS[ai], mi=investMonthIdx;
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>${a.name} · ${MKEYS[mi]}<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="flabel">원금 입금 추가 (현재 누적 ${fmt(a.deps[mi])}원)</div>
+  <div class="frow"><input type="number" id="accDep" placeholder="추가 입금액 (없으면 비움)"></div>
+  <div class="flabel">이번 달 평가금</div>
+  <div class="frow"><input type="number" id="accVal" placeholder="입력전" value="${a.vals[mi]??''}"></div>
+  <button class="save-btn" onclick="saveAccount()">저장</button>`;
+  openSheetEl();
+}
+function saveAccount(){
+  const a=ACCOUNTS[editAccIdx], mi=investMonthIdx;
+  const add=+$('#accDep').value||0;
+  if(add)for(let i=mi;i<a.deps.length;i++)a.deps[i]+=add;
+  const v=$('#accVal').value;
+  if(v!=='')a.vals[mi]=+v;
+  closeSheet();toast('저장되었습니다');render();
+}
+
+/* ISA 항목 추가/수정/삭제 */
+let editItemIdx=null;
+function openItemEdit(ii){
+  editItemIdx=(ii===undefined)?null:ii;
+  const it=editItemIdx!==null?ISA_ITEMS[editItemIdx]:null, mi=investMonthIdx;
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>${it?'항목 수정':'ISA 항목 추가'}<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="flabel">항목명</div>
+  <div class="frow"><input type="text" id="itName" placeholder="예: KODEX 미국S&P500" value="${it?it.name:''}"></div>
+  <div class="flabel">투자원금 (누적) · 현재 평가금</div>
+  <div class="frow"><input type="number" id="itDep" placeholder="원금" value="${it?(it.deps[mi]??''):''}"><input type="number" id="itVal" placeholder="평가금" value="${it?(it.vals[mi]??''):''}"></div>
+  <div class="flabel">보유수량</div>
+  <div class="frow"><input type="number" id="itShares" placeholder="0" value="${it?it.shares:''}"></div>
+  <button class="save-btn" onclick="saveItem()">${it?'수정 저장':'추가'}</button>
+  ${it?`<button class="save-btn ghost" onclick="delItem()">항목 삭제</button>`:''}`;
+  openSheetEl();
+}
+function saveItem(){
+  const mi=investMonthIdx;
+  const name=$('#itName').value, dep=+$('#itDep').value||0, val=+$('#itVal').value||0, shares=+$('#itShares').value||0;
+  if(!name){toast('항목명을 입력하세요');return;}
+  if(editItemIdx!==null){
+    const it=ISA_ITEMS[editItemIdx];
+    it.name=name; it.shares=shares;
+    for(let i=mi;i<it.deps.length;i++){it.deps[i]=dep;it.vals[i]=val;}
+    it.vals[mi]=val;
+  }else{
+    ISA_ITEMS.push({name,deps:MLABELS.map(()=>dep),vals:MLABELS.map(()=>val),divs:MLABELS.map(()=>0),shares,divBase:0});
+  }
+  closeSheet();toast('저장되었습니다');render();
+}
+function delItem(){ISA_ITEMS.splice(editItemIdx,1);investItem=null;closeSheet();toast('삭제되었습니다');render();}
+
+
+/* ============ 인세 ============ */
+function viewRoyalty(){
+  return `
+  <div class="seg">
+    <button class="${royaltySeg==='monthly'?'on':''}" onclick="setRseg('monthly')">월별 현황</button>
+    <button class="${royaltySeg==='stats'?'on':''}" onclick="setRseg('stats')">연간 통계</button>
+    <button class="${royaltySeg==='works'?'on':''}" onclick="setRseg('works')">작품별 통계</button>
+  </div>
+  ${royaltySeg==='monthly'?viewRoyaltyMonthly():royaltySeg==='stats'?viewRoyaltyStats():viewRoyaltyWorks()}`;
+}
+function setRseg(s){royaltySeg=s;render();scrollTop();}
+function openWork(t){royaltyWork=t;render();scrollTop();}
+
+function trendData(){return MLABELS.map((m,i)=>({m,v:monthDeposit(i)}));}
+function setRmonth(i){royaltyMonthIdx=i;render();}
+
+function viewRoyaltyMonthly(){
+  const trend=trendData();
+  /* 직전 6개월(이번 달 포함) 그래프 윈도우 */
+  const start=Math.max(0,MLABELS.length-6);
+  const win=trend.slice(start).map((x,j)=>({...x,idx:start+j}));
+  const maxV=Math.max(...win.map(x=>x.v),1);
+  const mi=royaltyMonthIdx;
+  const dep=monthDeposit(mi), set=monthSettle(mi);
+  /* 판매중 → 출간전 → 판매종료 순 정렬 */
+  const sorted=[...WORKS].sort((a,b)=>STATUS_ORDER[workStatus(a)]-STATUS_ORDER[workStatus(b)]||workDeposit(b,mi)-workDeposit(a,mi));
+  return `
+  <div class="card">
+    <h3>월별 입금액
+      <select class="catsel" style="max-width:none" onchange="setRmonth(+this.value)">
+        ${MLABELS.map((m,i)=>`<option value="${i}" ${i===mi?'selected':''}>2026년 ${m}</option>`).join('')}
+        <option disabled>─ 2025년 (연동 후) ─</option>
+      </select>
+    </h3>
+    <div class="chart" style="height:120px">${win.map(x=>`
+      <div class="col" onclick="setRmonth(${x.idx})">
+        <span class="cv" style="color:${x.idx===mi?'var(--accent-deep)':'var(--sub)'}">${kfmt(x.v)}</span>
+        <i style="height:${Math.max(4,x.v/maxV*100)}%;background:${x.idx===mi?'var(--accent)':'#cfdcd4'}"></i>
+        <span style="${x.idx===mi?'color:var(--accent-deep);font-weight:800':''}">${x.m}</span>
+      </div>`).join('')}
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>2026년 ${MLABELS[mi]} 상세</h3>
+    <div class="big-num">${fmt(dep)}<span style="font-size:15px;color:var(--sub)">원 입금</span></div>
+    <div class="sub" style="margin-top:3px">총 정산금 ${fmt(set)}원${set!==dep?` · 선인세 차감 ${fmt(set-dep)}원`:''}</div>
+    <div style="margin-top:8px">
+    ${sorted.map(w=>{
+      const s=w.hist[mi], d=workDeposit(w,mi), st=workStatus(w);
+      const remain=Math.max(0,w.advance-w.hist.slice(0,mi+1).reduce((a,v)=>a+v,0));
+      return `<div class="acct" style="cursor:pointer" onclick="royaltySeg='works';openWork('${w.title}')">
+        <div class="top"><b>${w.title}<span class="tag ${st==='판매중'?'gg':st==='판매종료'?'rr':''}">${st}</span></b><b>${fmt(d)}원</b></div>
+        <div style="margin-top:4px;font-size:12px;color:var(--sub);line-height:1.75">
+          정산금 ${fmt(s)}원${w.advance?`<br>선인세 차감 ${fmt(s-d)}원<br>잔여 선인세 ${fmt(remain)}원`:''}
+        </div>
+      </div>`;}).join('')}
+    ${OTHER_ROYALTY[mi]>0?`<div class="acct">
+      <div class="top"><b>기타<span class="tag">작품 외</span></b><b>${fmt(OTHER_ROYALTY[mi])}원</b></div>
+    </div>`:''}
+    </div>
+  </div>
+  <button class="save-btn" onclick="openRoyaltyInput()">7월 정산 입력</button>`;
+}
+
+/* 연도별 작품 인세 (2023~25 목데이터, 2026은 실데이터에서 계산) */
+const YEARLY_WORKS={
+ '2023':{'안녕여음':4100000,'기억의잔상':3200000,'페오크':1500000,'장마끝':600000,'달토끼':400000},
+ '2024':{'안녕여음':5900000,'기억의잔상':4000000,'골든아처스':2800000,'페오크':2100000,'장마끝':1000000,'윈터스파클':400000,'달토끼':200000},
+ '2025':{'안녕여음':6300000,'기억의잔상':5200000,'골든아처스':4500000,'페오크':3200000,'장마끝':1900000,'윈터스파클':1300000,'달토끼':188432},
+};
+function yearWorks(y){
+  if(y!=='2026')return YEARLY_WORKS[y];
+  const m={};
+  WORKS.forEach(w=>{const s=MLABELS.reduce((a,_,i)=>a+workDeposit(w,i),0);if(s>0)m[w.title]=s;});
+  const etc=OTHER_ROYALTY.reduce((a,v)=>a+v,0);if(etc>0)m['기타']=etc;
+  return m;
+}
+function setRyear(y){royaltyYear=y;render();}
+
+function viewRoyaltyStats(){
+  const trend=trendData();
+  const thisYear=trend.reduce((s,x)=>s+x.v,0);
+  const cum=WORKS.reduce((s,w)=>s+workCum(w),0);
+  /* 올해 연평균: 1월부터 정산금이 입력된 마지막 월까지의 월평균 */
+  let lastIdx=-1; MLABELS.forEach((_,i)=>{if(monthSettle(i)>0)lastIdx=i;});
+  const avgMonthly=lastIdx>=0?thisYear/(lastIdx+1):0;
+  const YEARS=[['2023',9800000],['2024',16400000],['2025',22588432],['2026',thisYear]];
+  const maxY=Math.max(...YEARS.map(x=>x[1]));
+  const yw=yearWorks(royaltyYear);
+  const ywTotal=Object.values(yw).reduce((s,v)=>s+v,0)||1;
+  const ywSorted=Object.entries(yw).sort((a,b)=>b[1]-a[1]);
+  return `
+  <div class="card hero">
+    <div class="hstats">
+      <div class="hs"><span>전체 누적</span><b>${fmt(cum)}원</b></div>
+      <div class="hs"><span>올해 누적</span><b>${fmt(thisYear)}원</b></div>
+      <div class="hs"><span>올해 연평균 (1~${lastIdx+1}월)</span><b>${fmt(avgMonthly)}원</b></div>
+    </div>
+  </div>
+  <div class="card"><h3>연도별 인세</h3>
+    <div class="chart" style="height:120px">
+      ${YEARS.map(([y,v])=>`<div class="col" onclick="setRyear('${y}')">
+        <span class="cv" style="color:${y===royaltyYear?'var(--accent-deep)':'var(--sub)'}">${kfmt(v)}</span>
+        <i style="height:${Math.max(5,v/maxY*100)}%;background:${y===royaltyYear?'var(--accent)':'#cfdcd4'}"></i>
+        <span style="${y===royaltyYear?'color:var(--accent-deep);font-weight:800':''}">${y}</span>
+      </div>`).join('')}
+    </div>
+  </div>
+  <div class="card"><h3>${royaltyYear}년 작품별 비중</h3>
+    ${ywSorted.map(([t,v])=>{const p=v/ywTotal*100;
+    return `<div class="acct" style="padding:9px 0">
+      <div class="top" style="font-size:13px"><b style="font-size:13px">${t}</b><span><b>${fmt(v)}원</b> <span class="sub">${p.toFixed(1)}%</span></span></div>
+      <div class="minibar" style="margin-top:5px"><i style="width:${p}%"></i></div>
+    </div>`;}).join('')}
+  </div>`;
+}
+
+function viewRoyaltyWorks(){
+  const maxW=Math.max(...WORKS.map(w=>workCum(w)));
+  return `
+  <div class="card"><h3>작품 ${WORKS.length}종 <span class="more" onclick="openWorkEdit()">+ 작품 등록</span></h3>
+    ${[...WORKS].sort((a,b)=>{
+      const sa=STATUS_ORDER[workStatus(a)],sb=STATUS_ORDER[workStatus(b)];
+      if(sa!==sb)return sa-sb;
+      if(workStatus(a)==='출간전')return WORKS.indexOf(a)-WORKS.indexOf(b); /* 등록순 */
+      return (a.pubDate||'').localeCompare(b.pubDate||''); /* 출간일 빠른 순 */
+    }).map(w=>{
+      const avg=workAvg(w), left=advanceLeft(w), st=workStatus(w);
+      return `<div class="workrow" onclick="openWork('${w.title}')">
+      <div class="wi">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+          <b style="font-size:13.5px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${w.title}</b>
+          <b style="white-space:nowrap">${fmt(workCum(w))}원</b>
+        </div>
+        <div style="margin-top:5px"><span class="tag ${st==='판매중'?'gg':st==='판매종료'?'rr':''}" style="margin-left:0">${st}</span><span class="tag">${w.publisher}</span><span class="tag">출간 ${w.pubDate}</span></div>
+        <div class="sub" style="margin-top:4px;font-size:11.5px;line-height:1.7">
+          ${avg!==null?`월평균 ${fmt(avg)}원`:'정산 시작 전'} · ${w.settleDay}
+          ${left>0?`<br><b style="color:var(--accent)">선인세 잔여 ${fmt(left)}원 (${(advanceUsed(w)/w.advance*100).toFixed(0)}% 소진)</b>`:''}
+        </div>
+      </div><span class="goarr">›</span>
+    </div>`;}).join('')}
+  </div>`;
+}
+
+function viewWorkDetail(){
+  const w=WORKS.find(x=>x.title===royaltyWork);
+  const cum=workCum(w),used=advanceUsed(w),left=advanceLeft(w);
+  const avg=workAvg(w);
+  const maxH=Math.max(...w.hist,1);
+  let running=w.base;
+  const rows=MLABELS.map((m,i)=>{running+=w.hist[i];return{m,v:w.hist[i],cum:running};}).reverse();
+  return `
+  <div class="card hero">
+    <h3>누적 인세</h3>
+    <div class="big-num">${fmt(cum)}원</div>
+    <div class="sub" style="margin-top:6px">2026 상반기 ${fmt(w.hist.reduce((s,v)=>s+v,0))}원${avg!==null?` · 월평균 ${fmt(avg)}원`:' · 정산 시작 전'}</div>
+  </div>
+  <div class="card">
+    <h3>작품 정보 <span class="more" onclick="openWorkEdit('${w.title}')">수정</span></h3>
+    <div class="inforow"><span class="k">상태</span><span class="v">${workStatus(w)}${w.ended?'':' (출간일 기준 자동)'}</span></div>
+    <div class="inforow"><span class="k">출판사</span><span class="v">${w.publisher}</span></div>
+    <div class="inforow"><span class="k">출간일</span><span class="v">${w.pubDate}</span></div>
+    <div class="inforow"><span class="k">정산일</span><span class="v">${w.settleDay}</span></div>
+    <div class="inforow"><span class="k">선인세</span><span class="v">${w.advance?fmt(w.advance)+'원':'없음'}</span></div>
+    ${w.advance?`
+    <div class="bar"><i style="width:${Math.min(100,used/w.advance*100)}%"></i></div>
+    <div style="display:flex;justify-content:space-between" class="sub">
+      <span>소진 ${fmt(used)}원 (${(used/w.advance*100).toFixed(0)}%)</span><span>잔여 <b style="color:var(--accent-deep)">${fmt(left)}원</b></span>
+    </div>
+    ${used>0&&left>0?`<div class="hl"><b>예상 소진 시점</b><span class="v">약 ${Math.ceil(left/avg)}개월 후</span></div>`:''}`:''}
+  </div>
+  <div class="card"><h3>월별 정산금 추이</h3>
+    <div class="chart">${w.hist.map((v,i)=>`<div class="col"><span class="cv">${kfmt(v)}</span><i style="height:${Math.max(4,v/maxH*100)}%;background:${i===MLABELS.length-1?'var(--accent)':'#cfdcd4'}"></i><span>${MLABELS[i]}</span></div>`).join('')}</div>
+  </div>
+  <div class="tablewrap">
+    <table class="data" style="min-width:0">
+      <thead><tr><th>월</th><th class="num">정산금</th><th class="num">입금액</th><th class="num">누적</th></tr></thead>
+      <tbody>${rows.map((r,j)=>{const i=MLABELS.length-1-j;const d=workDeposit(w,i);
+        return `<tr><td class="sub">2026.${r.m.replace('월','').padStart(2,'0')}</td><td class="num">${fmt(r.v)}</td><td class="num" style="${d<r.v?'color:var(--amber)':''}">${fmt(d)}</td><td class="num" style="color:var(--sub);font-weight:600">${fmt(r.cum)}</td></tr>`;}).join('')}</tbody>
+    </table>
+  </div>
+  ${w.advance?'<div class="note">입금액이 정산금보다 적은 달 = 선인세 차감</div>':''}`;
+}
+
+/* ============ 시트: 가져오기/입력 ============ */
+function openSheetEl(){$('#overlay').classList.add('show');$('#sheet').classList.add('show');}
+function closeSheet(){$('#overlay').classList.remove('show');$('#sheet').classList.remove('show');}
+
+let importStep=1;
+const IMPORT_ROWS=[
+ {date:'2026-07-16',desc:'지에스25 수원매산점',amount:5600,category:'식료품(마트,편의점)',auto:true},
+ {date:'2026-07-16',desc:'투썸플레이스 서현중앙점',amount:6700,category:'카페(커피, 디저트)',auto:true,dup:true},
+ {date:'2026-07-15',desc:'쿠팡 주식회사',amount:29900,category:'',auto:false},
+ {date:'2026-07-15',desc:'카카오_택시_선승인',amount:7800,category:'교통비',auto:true},
+ {date:'2026-07-14',desc:'(주)우아한형제들',amount:18500,category:'외식/배달',auto:true},
+ {date:'2026-07-14',desc:'네이버파이낸셜(주)',amount:12900,category:'',auto:false},
+];
+function openImport(){importStep=1;renderImport();openSheetEl();}
+function renderImport(){
+  if(importStep===1){
+    $('#sheet').innerHTML=`
+    <div class="grab"></div>
+    <h2>카드 내역 가져오기<button class="close" onclick="closeSheet()">✕</button></h2>
+    <div class="upload-zone" onclick="importStep=2;renderImport()">
+      <b>파일 업로드</b>카드사 엑셀/CSV 선택 (터치하면 샘플 파싱 결과로 이동)
+    </div>
+    <textarea class="paste" placeholder="또는 카드사 앱에서 복사한 이용 내역 붙여넣기..."></textarea>
+    <button class="save-btn" onclick="importStep=2;renderImport()">파싱 미리보기</button>
+    <div class="note">첫 업로드 시 열 매핑(날짜/적요/금액) 저장 → 이후 자동</div>`;
+  }else{
+    const auto=IMPORT_ROWS.filter(r=>r.auto&&!r.dup).length,manual=IMPORT_ROWS.filter(r=>!r.auto).length,dup=IMPORT_ROWS.filter(r=>r.dup).length;
+    $('#sheet').innerHTML=`
+    <div class="grab"></div>
+    <h2>파싱 결과 확인<button class="close" onclick="closeSheet()">✕</button></h2>
+    <div class="sub" style="margin-bottom:10px">총 ${IMPORT_ROWS.length}건 · 자동분류 <b class="pos">${auto}</b> · 분류 필요 <b style="color:var(--amber)">${manual}</b> · 중복 의심 <b class="neg">${dup}</b></div>
+    <div class="tablewrap" style="box-shadow:none;border:1px solid var(--line)">
+      <table class="data" style="min-width:480px">
+        <thead><tr><th>날짜</th><th>적요</th><th class="num">금액</th><th>지출구분</th></tr></thead>
+        <tbody>${IMPORT_ROWS.map((r,i)=>`<tr class="${!r.category?'unclass':''} ${r.dup?'dup':''}">
+          <td class="sub">${r.date.slice(5).replace('-','.')}</td>
+          <td class="desc">${r.desc}${r.dup?' <span class="chip" style="background:#f9e9e9;color:var(--red)">중복?</span>':''}${r.auto&&r.category?' <span class="chip" style="background:var(--accent-soft);color:var(--accent)">자동</span>':''}</td>
+          <td class="num">${fmt(r.amount)}</td>
+          <td><select class="catsel" onchange="IMPORT_ROWS[${i}].category=this.value">
+            <option value="">${!r.category?'⚠ 선택':'—'}</option>
+            ${CATS.map(c=>`<option value="${c.name}" ${r.category===c.name?'selected':''}>${c.short}</option>`).join('')}
+          </select></td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>
+    <div class="note" style="padding:10px 4px;text-align:left">미분류로 등록해도 지출 탭에서 나중에 분류 가능. 새 키워드 분류 시 "규칙으로 저장" 제안.</div>
+    <button class="save-btn" onclick="doImport()">중복 제외 ${IMPORT_ROWS.length-dup}건 등록</button>`;
+  }
+}
+function doImport(){
+  IMPORT_ROWS.filter(r=>!r.dup).forEach(r=>TXNS.push({id:Date.now()+Math.random(),date:r.date,desc:r.desc,amount:r.amount,category:r.category,welfare:'',memo:''}));
+  closeSheet();toast('5건 등록 완료');go('list');
+}
+
+let editId=null;
+function openManual(id){
+  editId=id||null;
+  const t=editId?TXNS.find(x=>x.id===editId):null;
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>${editId?'거래 수정':'수동 입력'}<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="frow"><input type="date" id="mDate" value="${t?t.date:'2026-07-16'}"><input type="number" id="mAmt" placeholder="금액" value="${t?t.amount:''}"></div>
+  <div class="frow"><input type="text" id="mDesc" placeholder="적요" value="${t?t.desc:''}"></div>
+  <div class="frow">
+    <select id="mCat"><option value="">지출구분 선택</option>${CATS.map(c=>`<option value="${c.name}" ${t&&t.category===c.name?'selected':''}>${c.short}</option>`).join('')}</select>
+  </div>
+  <div class="frow"><input type="text" id="mMemo" placeholder="메모 (선택)" value="${t?t.memo:''}"></div>
+  <button class="save-btn" onclick="saveManual()">${editId?'수정 저장':'등록'}</button>
+  ${editId?`<button class="save-btn ghost" onclick="delTxn()">삭제</button>`:''}`;
+  openSheetEl();
+}
+function saveManual(){
+  const prev=editId?TXNS.find(x=>x.id===editId):null;
+  const row={date:$('#mDate').value,amount:+$('#mAmt').value,desc:$('#mDesc').value||'(적요 없음)',category:$('#mCat').value,welfare:prev?prev.welfare:'',memo:$('#mMemo').value};
+  if(!row.amount){toast('금액을 입력하세요');return;}
+  if(editId){Object.assign(TXNS.find(x=>x.id===editId),row);toast('수정되었습니다');}
+  else{TXNS.push({id:Date.now(),...row});toast('등록되었습니다');}
+  closeSheet();render();
+}
+function delTxn(){TXNS=TXNS.filter(t=>t.id!==editId);toast('삭제되었습니다');closeSheet();render();}
+
+/* 스냅샷 일괄 입력 — 계좌별 평가금 (ISA 항목은 개별 관리) */
+function openInvestInput(){
+  const mi=investMonthIdx;
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>${MLABELS[mi]} 일괄 입력<button class="close" onclick="closeSheet()">✕</button></h2>
+  ${ACCOUNTS.map((a,i)=>`<div class="batchrow"><span class="bn">${a.name}</span><input type="number" data-a="${i}" placeholder="입력전" value="${a.vals[mi]??''}"></div>`).join('')}
+  <button class="save-btn" style="margin-top:14px" onclick="saveInvestInput()">저장</button>
+  <div class="note" style="padding:8px 0 0">ISA 하위 항목은 계좌 카드에서 개별 입력</div>`;
+  openSheetEl();
+}
+function saveInvestInput(){
+  const mi=investMonthIdx;
+  document.querySelectorAll('.batchrow input').forEach(inp=>{
+    if(inp.value==='')return;
+    ACCOUNTS[+inp.dataset.a].vals[mi]=+inp.value||0;
+  });
+  closeSheet();toast('저장되었습니다');render();
+}
+
+/* 인세 정산 입력 — 개별 입력 후 저장, 나중에 이어서 입력 가능. 세전 선택 시 ×96.7% 환산 */
+function openRoyaltyInput(){
+  const mi=MLABELS.length-1; /* 이번 달 */
+  const sorted=[...WORKS].sort((a,b)=>STATUS_ORDER[workStatus(a)]-STATUS_ORDER[workStatus(b)]);
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>7월 정산 입력<button class="close" onclick="closeSheet()">✕</button></h2>
+  ${sorted.map(w=>{const i=WORKS.indexOf(w),st=workStatus(w);
+  return `<div class="batchrow">
+    <span class="bn">${w.title} <span class="tag ${st==='판매중'?'gg':st==='판매종료'?'rr':''}">${st}</span></span>
+    <select class="mini" data-i="${i}"><option value="net">세후</option><option value="gross">세전</option></select>
+    <input type="number" placeholder="0" data-i="${i}" value="${w.hist[mi]||''}">
+    <span class="net" id="net${i}"></span>
+  </div>`;}).join('')}
+  <div class="batchrow">
+    <span class="bn">기타 <span class="tag">작품 외</span></span>
+    <select class="mini" data-i="etc"><option value="net">세후</option><option value="gross">세전</option></select>
+    <input type="number" placeholder="0" data-i="etc" value="${OTHER_ROYALTY[mi]||''}">
+    <span class="net" id="netetc"></span>
+  </div>
+  <div class="hl" style="margin-top:12px"><b>합계</b><span class="v" id="rSum">0원</span></div>
+  <button class="save-btn" style="margin-top:12px" onclick="saveRoyaltyInput()">저장</button>
+  <div class="note" style="padding:8px 0 0">입력한 항목만 저장돼요 · 나중에 다시 열어 이어서 입력 가능</div>`;
+  openSheetEl();
+  const upd=()=>{
+    let s=0;
+    document.querySelectorAll('.batchrow input').forEach(inp=>{
+      const i=inp.dataset.i, mode=document.querySelector(`select.mini[data-i="${i}"]`).value;
+      const v=+inp.value||0, net=mode==='gross'?Math.round(v*0.967):v;
+      s+=net;
+      const lbl=$('#net'+i);
+      if(lbl)lbl.textContent=(mode==='gross'&&v)?('→ '+fmt(net)):'';
+    });
+    $('#rSum').textContent=fmt(s)+'원';
+  };
+  document.querySelectorAll('.batchrow input, .batchrow select.mini').forEach(el=>{el.addEventListener('input',upd);el.addEventListener('change',upd);});
+  upd();
+}
+function saveRoyaltyInput(){
+  const mi=MLABELS.length-1;
+  document.querySelectorAll('.batchrow input').forEach(inp=>{
+    if(inp.value==='')return; /* 빈 칸은 건드리지 않음 */
+    const i=inp.dataset.i, mode=document.querySelector(`select.mini[data-i="${i}"]`).value;
+    const net=mode==='gross'?Math.round((+inp.value||0)*0.967):(+inp.value||0);
+    if(i==='etc')OTHER_ROYALTY[mi]=net; else WORKS[+i].hist[mi]=net;
+  });
+  closeSheet();toast('저장되었습니다 · 이어서 입력 가능');render();
+}
+
+/* 작품 등록/수정 */
+let editWork=null;
+function openWorkEdit(title){
+  editWork=title||null;
+  const w=editWork?WORKS.find(x=>x.title===editWork):null;
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>${editWork?'작품 정보 수정':'작품 등록'}<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="flabel">작품명</div>
+  <div class="frow"><input type="text" id="wTitle" placeholder="작품명" value="${w?w.title:''}"></div>
+  <div class="flabel">출판사</div>
+  <div class="frow"><input type="text" id="wPub" placeholder="출판사" value="${w?w.publisher:''}"></div>
+  <div class="flabel">출간일 · 정산일</div>
+  <div class="frow">
+    <input type="text" id="wDate" placeholder="출간일 (예: 2026-01-10)" value="${w?w.pubDate:''}">
+    <input type="text" id="wDay" placeholder="정산일 (예: 매월 15일)" value="${w?w.settleDay:''}">
+  </div>
+  <div class="flabel">선인세 (없으면 0) · 상태</div>
+  <div class="frow">
+    <input type="number" id="wAdv" placeholder="0" value="${w?w.advance:''}">
+    <select id="wEnd">
+      <option value="">자동 (출간일 기준)</option>
+      <option value="1" ${w&&w.ended?'selected':''}>판매종료</option>
+    </select>
+  </div>
+  <button class="save-btn" onclick="saveWork()">${editWork?'수정 저장':'등록'}</button>
+  <div class="note" style="padding:8px 0 0">출간일이 지나면 자동으로 '출간전 → 판매중' 전환</div>`;
+  openSheetEl();
+}
+function saveWork(){
+  const data={title:$('#wTitle').value,publisher:$('#wPub').value,pubDate:$('#wDate').value,settleDay:$('#wDay').value,advance:+$('#wAdv').value||0,ended:$('#wEnd').value==='1'};
+  if(!data.title){toast('작품명을 입력하세요');return;}
+  if(editWork){Object.assign(WORKS.find(x=>x.title===editWork),data);if(royaltyWork===editWork)royaltyWork=data.title;toast('수정되었습니다');}
+  else{WORKS.push({...data,hist:MLABELS.map(()=>0),base:data.advance});toast('작품이 등록되었습니다');}
+  closeSheet();render();
+}
+
+/* ============ 설정 ============ */
+function viewSettings(){
+  const rows=[
+    ['카테고리 · 예산','16개 / 총 130만원'],['저축·투자 계좌','10개'],['인세 작품',`${WORKS.length}개`],
+    ['자동 분류 규칙','키워드 24개'],['반복 항목','고정지출 4건 · 기부 1건'],
+    ['가져오기 열 매핑','KB국민카드 저장됨'],['데이터 내보내기','CSV'],
+  ];
+  return `<div class="card" style="padding:4px 16px">
+  ${rows.map(([a,b])=>`<div class="check todo" onclick="toast('프로토타입: 상세 설정은 실제 버전에서')"><div class="tx">${a}</div><span class="hint">${b} ›</span></div>`).join('')}
+  <div class="check ${typeof CFG!=='undefined'&&CFG?'done':'todo'}" onclick="openConfigEdit()"><div class="st">${typeof CFG!=='undefined'&&CFG?'✓':'·'}</div><div class="tx">구글 시트 연결</div><span class="hint">${typeof CFG!=='undefined'&&CFG?'연결됨':'미연결'} ›</span></div>
+  </div>
+  <div class="note">가계부 v0.14 · 실데이터 · config.js 설정 시 구글 시트 동기화</div>`;
+}
+
+render();
+
+/* ============ 구글 시트 동기화 (config.js 있으면 활성화) ============ */
+/* 연결 설정: config.js 또는 앱 내 설정(localStorage) */
+const CFG=window.APP_CONFIG||(function(){try{const c=JSON.parse(localStorage.getItem('appConfig'));return(c&&c.url)?c:null;}catch(e){return null;}})();
+function openConfigEdit(){
+  const c=CFG||{url:'',token:''};
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>구글 시트 연결<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="flabel">Apps Script 웹 앱 URL</div>
+  <div class="frow"><input type="text" id="cfgUrl" placeholder="https://script.google.com/macros/s/.../exec" value="${c.url}"></div>
+  <div class="flabel">토큰 (Code.gs의 TOKEN과 동일)</div>
+  <div class="frow"><input type="text" id="cfgToken" placeholder="토큰" value="${c.token}"></div>
+  <button class="save-btn" onclick="localStorage.setItem('appConfig',JSON.stringify({url:$('#cfgUrl').value.trim(),token:$('#cfgToken').value.trim()}));location.reload()">저장 후 연결</button>
+  ${CFG?'<button class="save-btn ghost" onclick="localStorage.removeItem(\'appConfig\');location.reload()">연결 해제</button>':''}
+  <div class="note">이 기기 브라우저에만 저장됩니다 (localStorage)</div>`;
+  openSheetEl();
+}
+const SYNC_COLS={
+  transactions:{get:()=>TXNS,set:v=>TXNS=v},
+  works:{get:()=>WORKS,set:v=>WORKS=v},
+  accounts:{get:()=>ACCOUNTS,set:v=>ACCOUNTS=v},
+  isa_items:{get:()=>ISA_ITEMS,set:v=>ISA_ITEMS=v},
+  savings:{get:()=>SAVINGS,set:v=>SAVINGS=v},
+  fixed:{get:()=>FIXED,set:v=>FIXED=v},
+  ry_month:{get:()=>RY_MONTH,set:v=>RY_MONTH=v},
+};
+let syncTimer=null,syncing=false;
+function scheduleSync(){
+  if(!CFG)return;
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(syncAll,1500); /* 변경 후 1.5초 뒤 일괄 저장 */
+}
+async function syncAll(){
+  if(!CFG||syncing)return; syncing=true;
+  try{
+    const payload={token:CFG.token,action:'saveAll',data:{}};
+    Object.entries(SYNC_COLS).forEach(([k,c])=>payload.data[k]=c.get());
+    await fetch(CFG.url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
+  }catch(e){toast('동기화 실패 — 네트워크 확인');}
+  syncing=false;
+}
+async function bootFromSheet(){
+  if(!CFG)return;
+  try{
+    const res=await fetch(`${CFG.url}?action=bootstrap&token=${encodeURIComponent(CFG.token)}`);
+    const data=await res.json();
+    let loaded=0;
+    Object.entries(SYNC_COLS).forEach(([k,c])=>{
+      if(Array.isArray(data[k])&&data[k].length){c.set(data[k]);loaded++;}
+    });
+    if(loaded===0){syncAll();toast('시트가 비어 있어 초기 데이터를 업로드했습니다');}
+    else toast('구글 시트에서 불러왔습니다');
+    render();
+  }catch(e){toast('시트 연결 실패 — 내장 데이터로 표시');}
+}
+/* 모든 사용자 액션(토스트 발생)에 저장 예약을 연결 */
+const _origToast=toast;
+toast=function(m){_origToast(m);if(m&&!m.includes('동기화')&&!m.includes('불러왔')&&!m.includes('연결 실패'))scheduleSync();};
+bootFromSheet();
+
+/* 좌우 스와이프 감지 (월 이동) */
+(function(){
+  const el=$('#main'); if(!el||!el.addEventListener)return;
+  let x0=0,y0=0;
+  el.addEventListener('touchstart',e=>{x0=e.touches[0].clientX;y0=e.touches[0].clientY;},{passive:true});
+  el.addEventListener('touchend',e=>{
+    const dx=e.changedTouches[0].clientX-x0, dy=e.changedTouches[0].clientY-y0;
+    if(Math.abs(dx)<60||Math.abs(dy)>50)return;
+    swipeMonth(dx<0?1:-1); /* 왼쪽 스와이프 = 다음 달 */
+  },{passive:true});
+})();
+</script>
+</body>
+</html>
