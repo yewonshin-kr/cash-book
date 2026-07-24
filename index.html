@@ -305,14 +305,6 @@ const MLABELS=[...Array(MCOUNT)].map((_,i)=>{const ym=ymOf(i),y=+ym.slice(0,4),m
 const yearIdxs=y=>MLABELS.map((_,i)=>i).filter(i=>ymOf(i).slice(0,4)===String(y));
 const txnM=t=>idxOfYm(t.date.slice(0,7)); /* 거래의 월 인덱스 (연도 반영) */
 
-const MONTHLY={
- '1월':{income:5805720,salary:5495720,saving:19300000,fixed:1705320,living:1570386,real:1005990,piggy:294010,welfareUse:564396},
- '2월':{income:9813020,salary:9403920,saving:2300000,fixed:1705320,living:1773194,real:1265194,piggy:328816,welfareUse:508000},
- '3월':{income:5610470,salary:5499750,saving:22300000,fixed:1705320,living:2557036,real:1993982,piggy:-365166,welfareUse:563054},
- '4월':{income:15010020,salary:5360360,saving:2300000,fixed:1705320,living:1694690,real:17730,piggy:917104,welfareUse:1676960},
- '5월':{income:5499770,salary:5499770,saving:2300000,fixed:1864270,living:1695090,real:1504880,piggy:712224,welfareUse:190210},
- '6월':{income:5414320,salary:5414320,saving:2300000,fixed:1836190,living:1455309,real:1260239,piggy:751985,welfareUse:195070},
-};
 let BUDGET_TOTAL=1300000;
 /* 고정지출 — 명칭/월 고정금액/기간 등록 가능 */
 let FIXED=[
@@ -334,15 +326,20 @@ let INCOMES={
 };
 /* 인세 통장 월별 항목: 기부(디폴트 5만), 인세 적금 입금(디폴트 0), 이자 */
 let RY_MONTH=[{"don": 50000, "save": 2365018, "int": 0}, {"don": 50000, "save": 111129, "int": 0}, {"don": 50000, "save": -2676147, "int": 84665}, {"don": 50000, "save": 0, "int": 0}, {"don": 50000, "save": 1000000, "int": 0}, {"don": 50000, "save": 0, "int": 0}, {"don": 50000, "save": 0, "int": 0}];
-const RY_BASE=7115335; /* 인세용 자유적금 기초 잔고 */
+let RY_BASE=7115335; /* 인세용 자유적금 기초 잔고 (설정에서 수정 가능) */
 let BALANCE=[37500400,42008100,22313250,32017950,32053450,32031580,null]; /* 월별 통장 잔고 (실데이터, 7월 미입력) */
 let RY_SAVING={inst:'신한은행',type:'적금',subtype:'자유',maturity:'2027-01-15'};
 const rySavingBalance=i=>RY_BASE+RY_MONTH.slice(0,i+1).reduce((s,x)=>s+x.save,0);
-/* 결산: 마감된 달은 결산값, 진행 중인 달(7월~)은 지출 탭 데이터로 실시간 계산 */
-const liveLiving=i=>i<MKEYS.length?MONTHLY[MKEYS[i]].living:livingTotal(i);
-const liveSaving=i=>{if(i<MKEYS.length)return MONTHLY[MKEYS[i]].saving;const ym=ymOf(i);return SAVINGS.filter(s=>savActive(s,ym)).reduce((s,x)=>s+savAmount(x,ym),0);};
+/* 결산: 모든 월을 데이터에서 실시간 계산 */
+/* 일회성 저축 (정기 상품 외 목돈 예치 — 결산 탭에서 등록/수정) */
+let LUMPS=[
+ {id:'lp1',ym:'2026-01',name:'예금 예치',amount:17000000},
+ {id:'lp2',ym:'2026-03',name:'예금 예치',amount:20000000},
+];
+const lumpSum=ym=>LUMPS.filter(l=>l.ym===ym).reduce((s,l)=>s+l.amount,0);
+const liveLiving=i=>livingTotal(i);
+const liveSaving=i=>{const ym=ymOf(i);return SAVINGS.filter(s=>savActive(s,ym)).reduce((s,x)=>s+savAmount(x,ym),0)+lumpSum(ym);};
 function liveCats(i){
-  if(i<MKEYS.length)return Object.entries(CAT_MONTHLY).map(([k,arr])=>[k,arr[i]]);
   const m={};TXNS.filter(t=>txnM(t)===i&&t.category&&t.category!=='인세 지출').forEach(t=>{const s=catShort(t.category);m[s]=(m[s]||0)+t.amount;});
   return Object.entries(m);
 }
@@ -361,25 +358,7 @@ function savAmount(s,ym){
   if(isMaturityMonth(s,ym))return s.maturityOverride!==undefined?s.maturityOverride:-(s.monthly*monthsBetween(s.start||ym,s.maturity));
   return s.monthly;
 }
-/* 월별 카테고리 생활비 (결산 시트 1~6월 실제값) */
-const CAT_MONTHLY={
- '교통비':[41500,48000,0,83300,24900,29100],
- '관리비':[189650,226900,204810,176960,190210,202070],
- '통신비':[94630,87830,87830,87830,87830,87830],
- '가스비':[13320,16510,11270,13400,10210,0],
- '생활용품':[0,524044,189410,92800,80900,278000],
- '식료품':[191970,124716,118590,31090,188680,136630],
- '외식/배달':[350066,175281,341370,403560,247169,165769],
- '카페':[67300,46600,70900,69600,113900,50400],
- '옷/뷰티':[164660,96000,57000,224600,325011,232480],
- '자동차':[0,0,827390,135000,0,50000],
- '컨텐츠':[135810,252433,26600,151750,196900,81870],
- '티켓/굿즈':[163680,53980,37500,38300,126590,53000],
- 'e스포츠':[0,8500,353500,63500,0,63900],
- '공부':[0,22000,0,0,0,15060],
- '기타':[157800,90400,230866,123000,102790,9200],
-};
-/* 인세 통장 지출 (생활비와 분리, 1~7월) */
+/* 인세 통장 지출 (생활비와 분리) */
 const ROYALTY_SPEND=[0,0,0,0,0,0,0]; /* 실데이터: 지출 탭 '인세 지출' 분류 합계 사용 */
 const DONATION=50000; /* 기부 — 인세 통장에서 */
 
@@ -454,8 +433,7 @@ function workAvg(w){
 const kfmt=n=>n===0?'0':(n>=100000000?(n/100000000).toFixed(1)+'억':(n/10000).toFixed(1)+'만');
 
 /* ============ 상태 ============ */
-const MKEYS=Object.keys(MONTHLY); /* 결산 가능 월 (1~6월) */
-let tab='home',filterCat='전체',sortKey='date',sortDir=-1,royaltyWork=null,royaltySeg='monthly',royaltyMonthIdx=MLABELS.length-2,settleIdx=MKEYS.length-1,royaltyYear=TODAY.slice(0,4),settleSeg='month',listMonthIdx=MLABELS.length-2,investMonthIdx=MLABELS.length-2,investItem=null,investAcc=null,yearCat=null,investSeg='month';
+let tab='home',filterCat='전체',sortKey='date',sortDir=-1,royaltyWork=null,royaltySeg='monthly',royaltyMonthIdx=MLABELS.length-2,settleIdx=Math.max(0,idxOfYm(TODAY.slice(0,7))-1),royaltyYear=TODAY.slice(0,4),settleSeg='month',listMonthIdx=MLABELS.length-2,investMonthIdx=MLABELS.length-2,investItem=null,investAcc=null,yearCat=null,investSeg='month';
 
 const $=s=>document.querySelector(s);
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1900);}
@@ -551,14 +529,15 @@ function viewHome(){
    {st:uc?'warn':'done',tx:'지출 분류',hint:uc?`미분류 ${uc}건`:'완료',go:'list'},
    ...CHECKS.map(c=>({key:c.id,st:checkDoneNow(c)?'done':'todo',tx:c.tx,hint:checkHint(c),go:c.go||''})),
   ];
-  /* 결산 대시보드 — 최근 마감월(6월) 기준 */
-  const li=MKEYS.length-1, lk=MKEYS[li], lym=ymOf(li);
-  const inc6=INCOMES[lk], incSum6=inc6.salary+inc6.etc.reduce((s,x)=>s+x.amount,0);
-  const sav6=SAVINGS.filter(s=>savActive(s,lym)).reduce((s,x)=>s+savAmount(x,lym),0);
+  /* 결산 대시보드 — 지난달 기준 (실시간 계산) */
+  const li=Math.max(0,idxOfYm(TODAY.slice(0,7))-1), lk=MLABELS[li];
+  const inc6=INCOMES[lk]||{salary:0,etc:[]}, incSum6=inc6.salary+inc6.etc.reduce((s,x)=>s+x.amount,0);
+  const sav6=liveSaving(li);
   const fix6=fixedInMonth(li).reduce((s,x)=>s+x.amount,0);
-  /* 지출 추이 */
-  const trendVals=MKEYS.map((k,i)=>liveLiving(i));
-  const maxT=Math.max(...trendVals);
+  /* 지출 추이 — 최근 6개월 (지난달까지) */
+  const trendIdxs=[...Array(Math.min(6,li+1))].map((_,j)=>li-Math.min(6,li+1)+1+j);
+  const trendVals=trendIdxs.map(i=>liveLiving(i));
+  const maxT=Math.max(...trendVals,1);
   /* 인세 통계 */
   const rySumYear=yearIdxs(TODAY.slice(0,4)).reduce((s,i)=>s+monthDeposit(i),0);
   return `
@@ -576,7 +555,7 @@ function viewHome(){
     <div class="setrow"><span class="lbl">수입</span><span class="val pos">+ ${fmt(incSum6)}원</span></div>
     <div class="setrow"><span class="lbl">저축·투자</span><span class="val">${fmt(sav6)}원</span></div>
     <div class="setrow"><span class="lbl">고정지출</span><span class="val">${fmt(fix6)}원</span></div>
-    <div class="setrow"><span class="lbl">생활비</span><span class="val">${fmt(MONTHLY[lk].living)}원</span></div>
+    <div class="setrow"><span class="lbl">생활비</span><span class="val">${fmt(liveLiving(li))}원</span></div>
     <div class="setrow"><span class="lbl">인세 입금</span><span class="val pos">+ ${fmt(monthDeposit(li))}원</span></div>
   </div>
 
@@ -588,7 +567,7 @@ function viewHome(){
   <div class="card">
     <h3>월별 지출 추이</h3>
     <div class="chart" style="height:150px;gap:8px">
-      ${trendVals.map((v,i)=>`<div class="col"><span class="cv" style="font-size:10.5px">${kfmt(v)}</span><i style="height:${Math.max(4,v/maxT*100)}%;max-width:34px;background:${i===trendVals.length-1?'var(--accent)':'#cfdcd4'}"></i><span style="font-size:11px">${MKEYS[i]}</span></div>`).join('')}
+      ${trendVals.map((v,i)=>`<div class="col"><span class="cv" style="font-size:10.5px">${kfmt(v)}</span><i style="height:${Math.max(4,v/maxT*100)}%;max-width:34px;background:${i===trendVals.length-1?'var(--accent)':'#cfdcd4'}"></i><span style="font-size:11px">${MLABELS[trendIdxs[i]]}</span></div>`).join('')}
     </div>
   </div>
 
@@ -612,7 +591,7 @@ function viewHome(){
     <div class="setrow"><span class="lbl">지난달 입금</span><span class="val pos">+ ${fmt(monthDeposit(MLABELS.length-2))}원</span></div>
     <div class="setrow"><span class="lbl">올해 누적</span><span class="val">${fmt(rySumYear)}원</span></div>
     <div class="setrow"><span class="lbl">전체 누적</span><span class="val">${fmt(WORKS.reduce((s,w)=>s+workCum(w),0))}원</span></div>
-    <div class="setrow"><span class="lbl">인세용 자유적금 잔고</span><span class="val">${fmt(rySavingBalance(MKEYS.length-1))}원</span></div>
+    <div class="setrow"><span class="lbl">인세용 자유적금 잔고</span><span class="val">${fmt(rySavingBalance(li))}원</span></div>
   </div>`;
 }
 
@@ -626,7 +605,6 @@ function viewList(){
     return `${monthRow}
     <div class="card" style="text-align:center;padding:36px 16px">
       <b style="font-size:15px">${MLABELS[mi]} 상세 내역 없음</b>
-      <div class="sub" style="margin-top:6px">생활비 합계 ${fmt(MONTHLY[MLABELS[mi]]?MONTHLY[MLABELS[mi]].living:0)}원</div>
     </div>`;
   }
   const cats=['전체','미분류',...CATS.filter(c=>monthTxns.some(t=>t.category===c.name)).map(c=>c.short)];
@@ -664,7 +642,7 @@ function viewList(){
     </div>`).join('')}
     <div class="tfoot"><span>${list.length}건${uc&&filterCat==='전체'?` · <b style="color:var(--amber)">미분류 ${uc}건</b>`:''}</span><b style="color:var(--ink);font-size:13.5px">합계 ${fmt(total)}원</b></div>
   </div>
-  <div class="note">카테고리 칩 탭 = 분류 변경 · 행 탭 = 상세 수정</div>`;
+`;
 }
 /* 분류 셀: 미분류(또는 수정 중)면 셀렉트, 분류 완료면 칩 */
 let editCatId=null;
@@ -707,7 +685,8 @@ function viewSettle(){
   const incomeSum=inc.salary+inc.etc.reduce((s,x)=>s+x.amount,0);
   const ym=ymOf(settleIdx);
   const savingList=SAVINGS.filter(s=>savActive(s,ym));
-  const savingSum=savingList.reduce((s,x)=>s+savAmount(x,ym),0);
+  const monthLumps=LUMPS.filter(l=>l.ym===ym);
+  const savingSum=savingList.reduce((s,x)=>s+savAmount(x,ym),0)+lumpSum(ym);
   const fixedList=fixedInMonth(settleIdx);
   const fixedSum=fixedList.reduce((s,x)=>s+x.amount,0);
   /* 해당 월 카테고리별 생활비 (실데이터), 금액 큰 순 */
@@ -740,7 +719,9 @@ function viewSettle(){
     return `<div class="setrow indent" style="cursor:pointer" onclick="openSavingEdit(${i})">
       <span class="lbl">${s.inst} ${s.type}${mat?'<span class="tag rr">만기 해지</span>':''}${!mat&&s.type==='적금'?`<span class="tag">${s.subtype==='자유'?'자유':'정기'}</span>`:''}${!mat&&s.maturity?`<span class="tag">만기 ${s.maturity.slice(2,7).replace('-','.')}</span>`:''}</span>
       <span class="val ${amt<0?'neg':''}">${fmt(amt)}원 ›</span></div>`;}).join('')}
+    ${monthLumps.map(l=>`<div class="setrow indent" style="cursor:pointer" onclick="openLumpEdit('${l.id}')"><span class="lbl">${l.name}<span class="tag gg">일회성</span></span><span class="val">${fmt(l.amount)}원 ›</span></div>`).join('')}
     <div class="setrow indent" style="cursor:pointer" onclick="openSavingEdit()"><span class="lbl" style="color:var(--accent);font-weight:700">＋ 저축 등록</span><span></span></div>
+    <div class="setrow indent" style="cursor:pointer" onclick="openLumpEdit()"><span class="lbl" style="color:var(--accent);font-weight:700">＋ 일회성 저축 추가</span><span></span></div>
   </div>
   <div class="card">
     <div class="setrow head"><span class="lbl">고정지출</span><span class="val">${fmt(fixedSum)}원</span></div>
@@ -766,6 +747,31 @@ function viewSettle(){
   </div>`;
 }
 
+/* 일회성 저축 등록/수정 */
+let editLumpId=null;
+function openLumpEdit(id){
+  editLumpId=id||null;
+  const l=id?LUMPS.find(x=>x.id===id):null;
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>${l?'일회성 저축 수정':'일회성 저축 추가'}<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="flabel">대상 월</div>
+  <div class="frow"><input type="month" id="lpYm" value="${l?l.ym:ymOf(settleIdx)}"></div>
+  <div class="flabel">이름 · 금액</div>
+  <div class="frow"><input type="text" id="lpName" placeholder="예: 예금 예치" value="${l?l.name:''}"><input type="number" id="lpAmt" placeholder="0" value="${l?l.amount:''}"></div>
+  <button class="save-btn" onclick="saveLump()">${l?'수정 저장':'추가'}</button>
+  ${l?'<button class="save-btn ghost" onclick="delLump()">삭제</button>':''}`;
+  openSheetEl();
+}
+function saveLump(){
+  const ym=$('#lpYm').value, name=$('#lpName').value.trim()||'일회성 저축', amount=+$('#lpAmt').value||0;
+  if(!/^\d{4}-\d{2}$/.test(ym)){toast('대상 월을 확인해주세요');return;}
+  if(editLumpId){Object.assign(LUMPS.find(x=>x.id===editLumpId),{ym,name,amount});}
+  else LUMPS.push({id:'lp'+Date.now().toString(36),ym,name,amount});
+  closeSheet();toast('일회성 저축 저장 완료');render();
+}
+function delLump(){LUMPS=LUMPS.filter(x=>x.id!==editLumpId);closeSheet();toast('삭제되었습니다');render();}
+
 /* 결산 — 연간 통계 (월 결산 블록 순서: 수입 → 저축 → 고정지출 → 생활비 → 인세) */
 function viewSettleYear(){
   const YI=yearIdxs(TODAY.slice(0,4)); /* 올해에 속한 월 인덱스만 집계 */
@@ -780,9 +786,10 @@ function viewSettleYear(){
   const maxI=Math.max(...YI.map(incOf),1);
   const maxS=Math.max(...YI.map(i=>liveSaving(i)),1);
   const mNum=i=>(+ymOf(i).slice(5,7))+'월';
-  /* 카테고리 연간 합산 상위 */
-  const catYear=Object.entries(CAT_MONTHLY).map(([k,arr])=>[k,arr.reduce((s,v)=>s+v,0)]).sort((a,b)=>b[1]-a[1]);
-  const maxC=catYear[0][1];
+  /* 카테고리 연간 합산 상위 — 지출 데이터 실시간 집계 */
+  const catMap={}; YI.forEach(i=>liveCats(i).forEach(([k,v])=>{if(v>0)catMap[k]=(catMap[k]||0)+v;}));
+  const catYear=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
+  const maxC=catYear.length?catYear[0][1]:1;
   return `
   <div class="seg"><button class="${settleSeg==='month'?'on':''}" onclick="setSseg('month')">월 결산</button><button class="${settleSeg==='year'?'on':''}" onclick="setSseg('year')">연간 통계</button></div>
   <div class="card hero">
@@ -809,10 +816,11 @@ function viewSettleYear(){
     </div>`).join('')}
     ${catYear.length>8?`<div class="sub" style="margin-top:6px;font-size:11.5px">외 ${catYear.length-8}개 카테고리</div>`:''}
   </div>
-  ${(()=>{const sel=yearCat||catYear[0][0];const arr=CAT_MONTHLY[sel]||[];const mx=Math.max(...arr,1);
-  return `<div class="card"><h3><span style="display:flex;align-items:center;color:var(--ink)">${cico(sel)}${sel} 월별 추이</span><span class="sub">월평균 ${fmt(arr.reduce((s,v)=>s+v,0)/arr.length)}원</span></h3>
-    <div class="chart" style="height:110px">${arr.map((v,i)=>`<div class="col" onclick="setSettle(${i});setSseg('month')"><span class="cv">${kfmt(v)}</span><i style="height:${Math.max(3,v/mx*100)}%"></i><span>${MKEYS[i]}</span></div>`).join('')}</div>
-  </div>`;})()}
+  ${catYear.length?(()=>{const sel=catMap[yearCat]!=null?yearCat:catYear[0][0];
+  const arr=YI.map(i=>{const f=liveCats(i).find(x=>x[0]===sel);return f?f[1]:0;});const mx=Math.max(...arr,1);
+  return `<div class="card"><h3><span style="display:flex;align-items:center;color:var(--ink)">${cico(sel)}${sel} 월별 추이</span><span class="sub">월평균 ${fmt(arr.reduce((s,v)=>s+v,0)/(arr.length||1))}원</span></h3>
+    <div class="chart" style="height:110px">${arr.map((v,j)=>`<div class="col" onclick="setSettle(${YI[j]});setSseg('month')"><span class="cv">${kfmt(v)}</span><i style="height:${Math.max(3,v/mx*100)}%"></i><span>${mNum(YI[j])}</span></div>`).join('')}</div>
+  </div>`;})():''}
   <div class="card" style="padding:13px 16px">
     <div class="setrow"><span class="lbl">올해 고정지출<small>월평균 ${fmt(fixSum/MLABELS.length)}원</small></span><span class="val">${fmt(fixSum)}원</span></div>
     <div class="setrow"><span class="lbl">올해 인세 입금</span><span class="val pos">+ ${fmt(rySum)}원</span></div>
@@ -1004,7 +1012,7 @@ function viewInvestMonth(){
     </div>`:''}
   </div>`;}).join('')}
   <button class="save-btn" onclick="openInvestInput()">${MLABELS[mi]} 일괄 입력</button>
-  <div class="note">이름 탭 = 상세 화면 · 숫자 탭 = 입력 · 실수익률 = (평가금 + 누적배당 − 원금) / 원금</div>`;
+`;
 }
 
 /* 투자 — 연간 통계 */
@@ -1139,7 +1147,7 @@ function openAccountEdit(ai){
   const a=ACCOUNTS[ai], mi=investMonthIdx;
   $('#sheet').innerHTML=`
   <div class="grab"></div>
-  <h2>${a.name} · ${MKEYS[mi]}<button class="close" onclick="closeSheet()">✕</button></h2>
+  <h2>${a.name} · ${MLABELS[mi]}<button class="close" onclick="closeSheet()">✕</button></h2>
   <div class="flabel">원금 입금 추가 (현재 누적 ${fmt(a.deps[mi])}원)</div>
   <div class="frow"><input type="number" id="accDep" placeholder="추가 입금액 (없으면 비움)"></div>
   <div class="flabel">이번 달 평가금</div>
@@ -1709,6 +1717,7 @@ function viewSettings(){
   ${row('저축 상품',`${SAVINGS.length}개`,'openSavingsList()')}
   ${row('고정지출',`${FIXED.length}건`,'openFixedList()')}
   ${row('인세 작품',`${WORKS.length}개`,'openWorksList()')}
+  ${row('인세 적금 기초 잔고',fmt(RY_BASE)+'원','openRyBaseEdit()')}
   ${row('월초 체크리스트',`${CHECKS.length}개 항목`,'openChecklistSettings()')}
   ${row('가져오기 열 매핑',mapSaved?'저장됨':'미설정','openMapEdit()')}
   ${row('데이터 내보내기','전체 지출 CSV','exportAllCsv()')}
@@ -1748,6 +1757,17 @@ function addCheckItem(){
 }
 function delCheckItem(i){ collectCheckEdits(); CHECKS.splice(i,1); openChecklistSettings(); }
 function saveCheckSettings(){ collectCheckEdits(); closeSheet(); render(); toast('체크리스트가 저장되었습니다'); }
+
+/* 인세 적금 기초 잔고 */
+function openRyBaseEdit(){
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>인세 적금 기초 잔고<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="flabel">2026년 1월 이전까지의 적금 잔고</div>
+  <div class="frow"><input type="number" id="ryBase" value="${RY_BASE}"></div>
+  <button class="save-btn" onclick="RY_BASE=+$('#ryBase').value||0;closeSheet();toast('기초 잔고 저장 완료');render()">저장</button>`;
+  openSheetEl();
+}
 
 /* 카테고리 · 예산 관리 */
 function openCatSettings(){
@@ -1907,7 +1927,10 @@ const SYNC_COLS={
   categories:{get:()=>CATS,set:v=>CATS=v},
   rules:{get:()=>RULES,set:v=>RULES=v},
   checklist:{get:()=>CHECKS,set:v=>CHECKS=v},
-  meta:{get:()=>[{k:'budget_total',v:BUDGET_TOTAL}],set:v=>{const m=(v||[]).find(x=>x.k==='budget_total');if(m&&m.v)BUDGET_TOTAL=m.v;}},
+  incomes:{get:()=>Object.entries(INCOMES).map(([k,v])=>({k,salary:v.salary,etc:v.etc})),set:v=>{INCOMES={};v.forEach(x=>INCOMES[x.k]={salary:x.salary||0,etc:x.etc||[]});}},
+  other_royalty:{get:()=>OTHER_ROYALTY.map(v=>({v})),set:v=>OTHER_ROYALTY=v.map(x=>x.v||0)},
+  lumps:{get:()=>LUMPS,set:v=>LUMPS=v},
+  meta:{get:()=>[{k:'budget_total',v:BUDGET_TOTAL},{k:'ry_base',v:RY_BASE}],set:v=>{(v||[]).forEach(x=>{if(x.k==='budget_total'&&x.v)BUDGET_TOTAL=x.v;if(x.k==='ry_base'&&x.v!=null)RY_BASE=x.v;});}},
 };
 function collectData(){const d={};Object.entries(SYNC_COLS).forEach(([k,c])=>d[k]=c.get());return d;}
 function applyData(data){
