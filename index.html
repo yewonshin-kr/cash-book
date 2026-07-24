@@ -1362,9 +1362,9 @@ function viewRoyaltyMonthly(){
     </div>`;
   }
   const mi=royaltyMonthIdx;
-  /* 그래프 윈도우: 선택월 ±3개월, 상한은 현재월 — 총 6개월 유지 */
+  /* 그래프 윈도우: 총 6개월, 선택월이 4번째 위치 (앞 3·뒤 2), 상한은 현재월 */
   const curIdx=MLABELS.length-1;
-  const wEnd=Math.min(mi+3,curIdx), wStart=Math.max(PAST_MIN,wEnd-5);
+  const wEnd=Math.min(mi+2,curIdx), wStart=Math.max(PAST_MIN,wEnd-5);
   const win=[];for(let i=wStart;i<=wEnd;i++)win.push({idx:i,v:monthDeposit(i),m:(+ymOf(i).slice(5,7))+'월'});
   const maxV=Math.max(...win.map(x=>x.v),1);
   ensureMonthIdx(mi);
