@@ -13,17 +13,50 @@
 const TOKEN = 'CHANGE_ME_TO_A_LONG_RANDOM_STRING';
 
 /* 동기화 대상 시트(컬렉션) 목록 — 프론트 SYNC_COLS와 동일 */
-const SHEETS = ['transactions','works','accounts','isa_items','savings','fixed','ry_month'];
+const SHEETS = ['transactions','works','accounts','isa_items','savings','fixed','ry_month','balance','categories','rules','meta'];
 
+/**
+ * [방법 0 — 가장 간단] Apps Script 단독 배포:
+ * index.html을 Apps Script에 'index'라는 HTML 파일로 추가하면
+ * 이 doGet이 앱 화면 자체를 서빙합니다. 토큰·config 불필요.
+ * (배포 시 액세스 권한을 '본인만'으로 — 구글 로그인만으로 보호됨)
+ *
+ * [방법 A/B — GitHub Pages] ?action=... 파라미터로 호출되면 JSON API로 동작.
+ */
 function doGet(e){
+  const hasAction = e && e.parameter && e.parameter.action;
+  if(!hasAction){
+    // 앱 화면 서빙 (Apps Script 단독 배포)
+    return HtmlService.createHtmlOutputFromFile('index')
+      .setTitle('가계부')
+      .addMetaTag('viewport','width=device-width, initial-scale=1, viewport-fit=cover')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
   if(!checkToken(e)) return json({error:'unauthorized'});
-  const action = e.parameter.action || 'bootstrap';
-  if(action === 'bootstrap'){
+  if(e.parameter.action === 'bootstrap'){
     const data = {};
     SHEETS.forEach(name => data[name] = readSheet(name));
     return json(data);
   }
   return json({error:'unknown action'});
+}
+
+/* ---- google.script.run 용 API (Apps Script 단독 배포 시, 토큰 불필요) ---- */
+function apiBootstrap(){
+  const data = {};
+  SHEETS.forEach(name => data[name] = readSheet(name));
+  return JSON.stringify(data);
+}
+function apiSaveAll(jsonStr){
+  const data = JSON.parse(jsonStr);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try{
+    Object.keys(data).forEach(name => {
+      if(SHEETS.indexOf(name) >= 0) writeSheet(name, data[name]);
+    });
+  } finally { lock.releaseLock(); }
+  return 'ok';
 }
 
 function doPost(e){
