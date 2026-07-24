@@ -31,6 +31,7 @@ header .back{border:0;background:var(--bg);width:29px;height:29px;border-radius:
 .mpick{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .mpick button{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:12px 4px;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer;font-family:inherit}
 .mpick button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.mpick button.future{color:var(--sub);background:#fafbfa}
 main{flex:1;padding:4px 14px 96px;overflow-x:hidden}
 .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-bottom:10px}
 /* 타이포 하이라키: 페이지 타이틀 18 > 섹션 14.5 > 카드(영역) 타이틀 13.5(잉크) > 행 13~13.5 > 보조 11.5~12.5(그레이) */
@@ -307,10 +308,14 @@ const START_Y=2026, START_M=1;
 const TODAY=(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
 const idxOfYm=ym=>(+ym.slice(0,4)-START_Y)*12+(+ym.slice(5,7)-START_M);
 const MCOUNT=Math.max(7, idxOfYm(TODAY.slice(0,7))+1);
-const ymOf=i=>{const t=START_M+i,y=START_Y+Math.floor((t-1)/12),m=((t-1)%12)+1;return y+'-'+String(m).padStart(2,'0');};
+const ymOf=i=>{const t=START_M+i,y=START_Y+Math.floor((t-1)/12),m=(((t-1)%12)+12)%12+1;return y+'-'+String(m).padStart(2,'0');}; /* 음수 인덱스(과거) 지원 */
 const mFull=i=>{const ym=ymOf(i);return (+ym.slice(0,4))+'년 '+(+ym.slice(5,7))+'월';};
 /* 라벨: 시작 연도는 'N월' (기존 데이터 키 호환), 이후 연도는 'YYYY년 N월' */
-const MLABELS=[...Array(MCOUNT)].map((_,i)=>{const ym=ymOf(i),y=+ym.slice(0,4),m=+ym.slice(5,7);return (y===START_Y?'':y+'년 ')+m+'월';});
+const ymLabel=ym=>{const y=+ym.slice(0,4),m=+ym.slice(5,7);return (y===START_Y?'':y+'년 ')+m+'월';};
+const MLABELS=[...Array(MCOUNT)].map((_,i)=>ymLabel(ymOf(i)));
+const mKey=i=>MLABELS[i]||ymLabel(ymOf(i)); /* 미래 월 인덱스도 라벨 생성 */
+const FUTURE_M=12; /* 미래 미리보기 개월 수 (지출·결산·투자·인세 공통) */
+const PAST_MIN=idxOfYm('2020-10'); /* 과거 탐색 하한 — 이관 데이터 시작 시점 */
 const yearIdxs=y=>MLABELS.map((_,i)=>i).filter(i=>ymOf(i).slice(0,4)===String(y));
 const txnM=t=>idxOfYm(t.date.slice(0,7)); /* 거래의 월 인덱스 (연도 반영) */
 
@@ -381,7 +386,7 @@ const itemCumDiv=(it,mi)=>it.divBase+it.divs.slice(0,mi+1).reduce((s,v)=>s+(v||0
 const itemRate=(it,mi)=>(it.vals[mi]==null||!it.deps[mi])?null:((it.vals[mi]+itemCumDiv(it,mi)-it.deps[mi])/it.deps[mi]*100);
 const accRate=(a,mi)=>a.vals[mi]==null?null:((a.vals[mi]+a.cumDiv-a.deps[mi])/a.deps[mi]*100);
 const invTotVal=mi=>{const e=ACCOUNTS.filter(a=>a.vals[mi]!=null);return e.length?e.reduce((s,a)=>s+a.vals[mi],0):null;};
-const invTotDep=mi=>ACCOUNTS.reduce((s,a)=>s+a.deps[mi],0);
+const invTotDep=mi=>ACCOUNTS.reduce((s,a)=>s+(a.deps[mi]||0),0);
 const invTotDiv=()=>ACCOUNTS.reduce((s,a)=>s+a.cumDiv,0);
 const fmtV=v=>v==null?'<span class="pre">입력</span>':fmt(v)+'원';
 const fmtR=r=>r==null?'<span style="color:var(--sub)">-</span>':`<b class="${r>=0?'pos':'neg'}">${r>=0?'+':''}${r.toFixed(1)}%</b>`;
@@ -415,6 +420,17 @@ function ensureMonths(){
   }catch(e){}
 }
 ensureMonths();
+/* 미래 월 조회 시 해당 인덱스까지 월별 배열 지연 패딩 (미리보기·선입력용) */
+function ensureMonthIdx(i){
+  const need=i+1;
+  const pad=(arr,fill)=>{if(!Array.isArray(arr))return;while(arr.length<need)arr.push(typeof fill==='function'?fill():fill);};
+  pad(RY_MONTH,()=>({don:DONATION,save:0,int:0}));
+  pad(BALANCE,null); pad(OTHER_ROYALTY,0); pad(ROYALTY_SPEND,0);
+  WORKS.forEach(w=>pad(w.hist,0));
+  ACCOUNTS.forEach(a=>{const last=a.deps[a.deps.length-1]||0;pad(a.deps,last);pad(a.vals,null);});
+  ISA_ITEMS.forEach(it=>{const last=it.deps[it.deps.length-1]||0;pad(it.deps,last);pad(it.vals,null);pad(it.divs,null);});
+  const l=mKey(i); if(!INCOMES[l])INCOMES[l]={salary:0,etc:[]};
+}
 /* 작품 상태: 판매종료(수동) > 출간전(출간일 미도래, 자동) > 판매중(자동) */
 function workStatus(w){
   if(w.ended)return'판매종료';
@@ -433,16 +449,20 @@ function workSort(a,b){
 const workCum=w=>w.base+w.hist.reduce((s,v)=>s+v,0);
 const advanceUsed=w=>w.hist.reduce((s,v)=>s+v,0);
 const advanceLeft=w=>Math.max(0,w.advance-advanceUsed(w));
-/* 해당 월 실제 입금액: 선인세 작품은 선인세 소진 전까지 입금 0 */
+/* 해당 월 정산금·입금액 — 음수 인덱스(2026년 이전)는 이관된 과거 데이터(PAST_HIST)에서 읽기 */
+const pastAt=(w,i)=>{const v=(PAST_HIST[w.title]||{})[ymOf(i)];return v?{s:v[0],d:v.length>1?v[1]:v[0]}:{s:0,d:0};};
+const workSettleAt=(w,i)=>i<0?pastAt(w,i).s:(w.hist[i]||0);
+/* 실제 입금액: 선인세 작품은 선인세 소진 전까지 입금 0 */
 function workDeposit(w,i){
-  if(!w.advance)return w.hist[i];
+  if(i<0)return pastAt(w,i).d;
+  if(!w.advance)return w.hist[i]||0;
   const before=w.hist.slice(0,i).reduce((s,v)=>s+v,0);
-  const after=before+w.hist[i];
+  const after=before+(w.hist[i]||0);
   if(after<=w.advance)return 0;
   return after-Math.max(before,w.advance);
 }
-const monthDeposit=i=>WORKS.reduce((s,w)=>s+workDeposit(w,i),0)+OTHER_ROYALTY[i];
-const monthSettle=i=>WORKS.reduce((s,w)=>s+w.hist[i],0)+OTHER_ROYALTY[i];
+const monthDeposit=i=>WORKS.reduce((s,w)=>s+workDeposit(w,i),0)+(i<0?0:(OTHER_ROYALTY[i]||0));
+const monthSettle=i=>WORKS.reduce((s,w)=>s+workSettleAt(w,i),0)+(i<0?0:(OTHER_ROYALTY[i]||0));
 /* 월평균: 첫 정산 발생 월부터 계산 */
 function workAvg(w){
   const first=w.hist.findIndex(v=>v>0);
@@ -512,20 +532,22 @@ function openInvestItem(i,ev){if(ev)ev.stopPropagation();pushHist();investItem=i
 function openAccountDetail(i){pushHist();investAcc=i;investItem=null;render();scrollTop();}
 /* 좌우 스와이프 → 월 이동 (월 구분이 있는 탭) */
 function swipeMonth(dir){
-  const move=(cur,max)=>{const n=cur+dir;return(n<0||n>max)?null:n;};
-  if(tab==='settle'&&settleSeg==='month'){const n=move(settleIdx,MLABELS.length-1);if(n===null){toast(dir>0?'다음 달 데이터 없음':'이전 달 데이터는 연동 후 제공');return;}settleIdx=n;render();}
-  else if(tab==='royalty'&&!royaltyWork&&royaltySeg==='monthly'){const n=move(royaltyMonthIdx,MLABELS.length-1);if(n===null)return;royaltyMonthIdx=n;render();}
-  else if(tab==='list'){const n=move(listMonthIdx,MLABELS.length-1);if(n===null){toast(dir>0?'다음 달 데이터 없음':'이전 달 데이터는 연동 후 제공');return;}listMonthIdx=n;render();}
-  else if(tab==='invest'&&investSeg==='month'){const n=move(investMonthIdx,MLABELS.length-1);if(n===null){toast(dir>0?'다음 달 데이터 없음':'이전 달 데이터는 연동 후 제공');return;}investMonthIdx=n;render();}
+  const move=(cur,max)=>{const n=cur+dir;return(n<PAST_MIN||n>max)?null:n;};
+  if(tab==='settle'&&settleSeg==='month'){const n=move(settleIdx,MLABELS.length-1+FUTURE_M);if(n===null){toast(dir>0?'다음 달 데이터 없음':'2020년 10월 이전 데이터는 없어요');return;}settleIdx=n;render();}
+  else if(tab==='royalty'&&!royaltyWork&&royaltySeg==='monthly'){const n=move(royaltyMonthIdx,MLABELS.length-1+FUTURE_M);if(n===null)return;royaltyMonthIdx=n;render();}
+  else if(tab==='list'){const n=move(listMonthIdx,MLABELS.length-1+FUTURE_M);if(n===null){toast(dir>0?'다음 달 데이터 없음':'2020년 10월 이전 데이터는 없어요');return;}listMonthIdx=n;render();}
+  else if(tab==='invest'&&investSeg==='month'){const n=move(investMonthIdx,MLABELS.length-1+FUTURE_M);if(n===null){toast(dir>0?'다음 달 데이터 없음':'2020년 10월 이전 데이터는 없어요');return;}investMonthIdx=n;render();}
 }
 function setSettle(i){settleIdx=i;render();}
 /* 월 이동바 라벨 탭 → 월 선택 시트 */
 function openMonthPicker(target){
   const cur={list:listMonthIdx,settle:settleIdx,royalty:royaltyMonthIdx,invest:investMonthIdx}[target];
+  const cnt=MLABELS.length+FUTURE_M-PAST_MIN; /* 과거(이관 데이터 시작)~미래까지 선택 가능 */
   $('#sheet').innerHTML=`
   <div class="grab"></div>
   <h2>월 선택<button class="close" onclick="closeSheet()">✕</button></h2>
-  <div class="mpick">${MLABELS.map((m,i)=>`<button class="${i===cur?'on':''}" onclick="pickMonth('${target}',${i})">${mFull(i)}</button>`).join('')}</div>`;
+  <div class="mpick">${[...Array(cnt)].map((_,j)=>{const i=PAST_MIN+j;
+    return `<button class="${i===cur?'on':''} ${(i<0||i>=MLABELS.length)?'future':''}" onclick="pickMonth('${target}',${i})">${mFull(i)}</button>`;}).join('')}</div>`;
   openSheetEl();
 }
 function pickMonth(t,i){
@@ -644,7 +666,7 @@ function viewList(){
   if(monthTxns.length===0){
     return `${monthRow}
     <div class="card" style="text-align:center;padding:36px 16px">
-      <b style="font-size:15px">${MLABELS[mi]} 상세 내역 없음</b>
+      <b style="font-size:15px">${mKey(mi)} 상세 내역 없음</b>
     </div>`;
   }
   let list=monthTxns.filter(t=>{
@@ -764,7 +786,8 @@ function setSseg(s){settleSeg=s;render();scrollTop();}
 
 function viewSettle(){
   if(settleSeg==='year')return viewSettleYear();
-  const label=MLABELS[settleIdx];
+  ensureMonthIdx(settleIdx); /* 미래 월도 조회·입력 가능 */
+  const label=mKey(settleIdx);
   const mLiving=liveLiving(settleIdx);
   const inc=INCOMES[label]||{salary:0,etc:[]};
   const incomeSum=inc.salary+inc.etc.reduce((s,x)=>s+x.amount,0);
@@ -775,7 +798,7 @@ function viewSettle(){
   const fixedSum=fixedList.reduce((s,x)=>s+x.amount,0);
   /* 해당 월 카테고리별 생활비 (실데이터), 금액 큰 순 */
   const catRows=liveCats(settleIdx).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
-  const rdep=monthDeposit(settleIdx), rspend=rySpend(settleIdx), ry=RY_MONTH[settleIdx];
+  const rdep=monthDeposit(settleIdx), rspend=rySpend(settleIdx), ry=RY_MONTH[settleIdx]||{don:0,save:0,int:0};
   return `
   <div class="seg"><button class="${settleSeg==='month'?'on':''}" onclick="setSseg('month')">월 결산</button><button class="${settleSeg==='year'?'on':''}" onclick="setSseg('year')">연간 통계</button></div>
   <div class="month-row">
@@ -939,7 +962,7 @@ function delSaving(){SAVINGS.splice(editSavingIdx,1);closeSheet();toast('삭제�
 
 /* 월급 수정 */
 function openSalaryEdit(){
-  const label=MLABELS[settleIdx], inc=INCOMES[label];
+  const label=mKey(settleIdx), inc=INCOMES[label];
   $('#sheet').innerHTML=`
   <div class="grab"></div>
   <h2>${label} 월급 입력<button class="close" onclick="closeSheet()">✕</button></h2>
@@ -951,7 +974,7 @@ function openSalaryEdit(){
 let editEtcIdx=null;
 function openEtcEdit(idx){
   editEtcIdx=(idx===undefined)?null:idx;
-  const label=MLABELS[settleIdx];
+  const label=mKey(settleIdx);
   const e=editEtcIdx!==null?INCOMES[label].etc[editEtcIdx]:null;
   $('#sheet').innerHTML=`
   <div class="grab"></div>
@@ -963,7 +986,7 @@ function openEtcEdit(idx){
   openSheetEl();
 }
 function saveEtc(){
-  const label=MLABELS[settleIdx];
+  const label=mKey(settleIdx);
   const data={name:$('#etcName').value||'기타',amount:+$('#etcAmt').value||0};
   if(!data.amount){toast('금액을 입력하세요');return;}
   if(editEtcIdx!==null)INCOMES[label].etc[editEtcIdx]=data; else INCOMES[label].etc.push(data);
@@ -995,7 +1018,8 @@ function saveFixed(){
 }
 /* 통장 잔고 입력 */
 function openBalanceEdit(){
-  const label=MLABELS[settleIdx];
+  if(settleIdx<0){toast('2026년 이전 데이터는 수정할 수 없어요');return;}
+  const label=mKey(settleIdx);
   $('#sheet').innerHTML=`
   <div class="grab"></div>
   <h2>${label} 통장 잔고<button class="close" onclick="closeSheet()">✕</button></h2>
@@ -1005,7 +1029,8 @@ function openBalanceEdit(){
 }
 /* 인세 통장 월 항목 (기부/이자/적금 입금) */
 function openRyEdit(){
-  const label=MLABELS[settleIdx], ry=RY_MONTH[settleIdx];
+  if(settleIdx<0){toast('2026년 이전 데이터는 수정할 수 없어요');return;}
+  const label=mKey(settleIdx), ry=RY_MONTH[settleIdx];
   $('#sheet').innerHTML=`
   <div class="grab"></div>
   <h2>${label} 인세 통장 입력<button class="close" onclick="closeSheet()">✕</button></h2>
@@ -1034,6 +1059,7 @@ function viewInvest(){
 
 function viewInvestMonth(){
   const mi=investMonthIdx;
+  ensureMonthIdx(mi);
   const dep=invTotDep(mi),val=invTotVal(mi),div=invTotDiv();
   const rate=val==null?null:((val+div-dep)/dep*100);
   return `
@@ -1055,7 +1081,7 @@ function viewInvestMonth(){
         <b style="font-size:14.5px;cursor:pointer" onclick="openAccountDetail(${ai})">${a.name}<span class="tag">${a.tag}</span> <span class="goarr">›</span></b>
         <b style="font-size:15px;cursor:pointer" onclick="openAccountEdit(${ai})">${fmtV(a.vals[mi])}</b>
       </div>
-      <div class="btm" style="cursor:pointer" onclick="openAccountEdit(${ai})"><span>원금 ${fmt(a.deps[mi])}원${a.cumDiv?` · 누적배당 ${fmt(a.cumDiv)}원`:''}</span><span class="rate">${fmtR(r)}</span></div>
+      <div class="btm" style="cursor:pointer" onclick="openAccountEdit(${ai})"><span>원금 ${fmt(a.deps[mi]||0)}원${a.cumDiv?` · 누적배당 ${fmt(a.cumDiv)}원`:''}</span><span class="rate">${fmtR(r)}</span></div>
     </div>
     ${a.isa?`<div style="margin-top:6px;border-top:1px solid var(--line);padding-top:4px">
       ${ISA_ITEMS.map((it,ii)=>{const ir=itemRate(it,mi);
@@ -1069,7 +1095,7 @@ function viewInvestMonth(){
       <div class="acct" style="cursor:pointer" onclick="openItemEdit()"><div class="top"><b style="font-size:13px;color:var(--accent)">＋ 항목 추가</b></div></div>
     </div>`:''}
   </div>`;}).join('')}
-  <button class="save-btn" onclick="openInvestInput()">${MLABELS[mi]} 일괄 입력</button>
+  <button class="save-btn" onclick="openInvestInput()">${mKey(mi)} 일괄 입력</button>
 `;
 }
 
@@ -1112,10 +1138,10 @@ function viewAccountDetail(){
   const maxV=Math.max(...a.vals.map(v=>v||0),1);
   return `
   <div class="card hero">
-    <h3>현재 평가금 <span class="sub">${MLABELS[mi]}</span></h3>
+    <h3>현재 평가금 <span class="sub">${mKey(mi)}</span></h3>
     <div class="big-num">${a.vals[mi]==null?'-':fmt(a.vals[mi])+'원'}</div>
     <div style="display:flex;gap:16px;margin-top:8px;font-size:12.5px">
-      <span class="sub">원금 ${fmt(a.deps[mi])}원${a.cumDiv?` · 누적배당 ${fmt(a.cumDiv)}원`:''}</span>
+      <span class="sub">원금 ${fmt(a.deps[mi]||0)}원${a.cumDiv?` · 누적배당 ${fmt(a.cumDiv)}원`:''}</span>
       ${r!=null?`<span style="color:${r>=0?'#8fd4ac':'#f0a8a8'};font-weight:700">${r>=0?'+':''}${r.toFixed(1)}%</span>`:''}
     </div>
   </div>
@@ -1129,7 +1155,7 @@ function viewAccountDetail(){
       return `<tr><td class="sub">2026.${String(i+1).padStart(2,'0')}</td><td class="num">${fmt(a.deps[i])}</td><td class="num">${a.vals[i]==null?'-':fmt(a.vals[i])}</td><td class="num">${rr==null?'-':`<span class="${rr>=0?'pos':'neg'}">${rr>=0?'+':''}${rr.toFixed(1)}%</span>`}</td></tr>`;}).reverse().join('')}</tbody>
     </table>
   </div>
-  <button class="save-btn" onclick="openAccountEdit(${investAcc})">${MLABELS[mi]} 입력 (원금 입금 · 평가금)</button>`;
+  <button class="save-btn" onclick="openAccountEdit(${investAcc})">${mKey(mi)} 입력 (원금 입금 · 평가금)</button>`;
 }
 
 /* ISA 항목 상세 — 인세 작품 상세와 동일 패턴 */
@@ -1139,17 +1165,17 @@ function viewInvestItem(){
   const maxV=Math.max(...it.vals.map(v=>v||0),1);
   return `
   <div class="card hero">
-    <h3>현재 평가금 <span class="sub">${MLABELS[mi]}</span></h3>
+    <h3>현재 평가금 <span class="sub">${mKey(mi)}</span></h3>
     <div class="big-num">${it.vals[mi]==null?'-':fmt(it.vals[mi])+'원'}</div>
     <div style="display:flex;gap:16px;margin-top:8px;font-size:12.5px">
-      <span class="sub">원금 ${fmt(it.deps[mi])}원</span>
+      <span class="sub">원금 ${fmt(it.deps[mi]||0)}원</span>
       ${rate!=null?`<span style="color:${rate>=0?'#8fd4ac':'#f0a8a8'};font-weight:700">${rate>=0?'+':''}${rate.toFixed(1)}% (배당 포함)</span>`:''}
     </div>
   </div>
   <div class="card">
     <h3>항목 정보 <span class="more" onclick="openItemEdit(${investItem})">수정</span></h3>
     <div class="inforow"><span class="k">보유수량</span><span class="v">${it.shares?fmt(it.shares)+'주':'미입력'}</span></div>
-    <div class="inforow"><span class="k">투자원금</span><span class="v">${fmt(it.deps[mi])}원</span></div>
+    <div class="inforow"><span class="k">투자원금</span><span class="v">${fmt(it.deps[mi]||0)}원</span></div>
     <div class="inforow"><span class="k">누적 배당금</span><span class="v">${fmt(cumDiv)}원</span></div>
     <div class="inforow"><span class="k">이번 달 배당금</span><span class="v">${fmt(it.divs[mi]||0)}원</span></div>
   </div>
@@ -1163,7 +1189,7 @@ function viewInvestItem(){
       return `<tr><td class="sub">2026.${String(i+1).padStart(2,'0')}</td><td class="num">${fmt(it.deps[i])}</td><td class="num">${it.vals[i]==null?'-':fmt(it.vals[i])}</td><td class="num">${fmt(it.divs[i]||0)}</td><td class="num">${r==null?'-':`<span class="${r>=0?'pos':'neg'}">${r>=0?'+':''}${r.toFixed(1)}%</span>`}</td></tr>`;}).reverse().join('')}</tbody>
     </table>
   </div>
-  <button class="save-btn" onclick="openItemInput(${investItem})">${MLABELS[mi]} 입력 (원금 · 평가금 · 배당금)</button>`;
+  <button class="save-btn" onclick="openItemInput(${investItem})">${mKey(mi)} 입력 (원금 · 평가금 · 배당금)</button>`;
 }
 
 /* 항목 통합 입력: 원금 + 평가금 + 배당금(수량×주당) 한 번에 */
@@ -1172,7 +1198,7 @@ function openItemInput(ii,ev){
   const it=ISA_ITEMS[ii], mi=investMonthIdx;
   $('#sheet').innerHTML=`
   <div class="grab"></div>
-  <h2>${it.name} · ${MLABELS[mi]}<button class="close" onclick="closeSheet()">✕</button></h2>
+  <h2>${it.name} · ${mKey(mi)}<button class="close" onclick="closeSheet()">✕</button></h2>
   <div class="flabel">투자원금 (누적)</div>
   <div class="frow"><input type="number" id="iiDep" value="${it.deps[mi]??''}"></div>
   <div class="flabel">현재 평가금</div>
@@ -1205,8 +1231,8 @@ function openAccountEdit(ai){
   const a=ACCOUNTS[ai], mi=investMonthIdx;
   $('#sheet').innerHTML=`
   <div class="grab"></div>
-  <h2>${a.name} · ${MLABELS[mi]}<button class="close" onclick="closeSheet()">✕</button></h2>
-  <div class="flabel">원금 입금 추가 (현재 누적 ${fmt(a.deps[mi])}원)</div>
+  <h2>${a.name} · ${mKey(mi)}<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="flabel">원금 입금 추가 (현재 누적 ${fmt(a.deps[mi]||0)}원)</div>
   <div class="frow"><input type="number" id="accDep" placeholder="추가 입금액 (없으면 비움)"></div>
   <div class="flabel">이번 달 평가금</div>
   <div class="frow"><input type="number" id="accVal" placeholder="입력전" value="${a.vals[mi]??''}"></div>
@@ -1288,10 +1314,12 @@ function viewRoyaltyMonthly(){
   const win=trend.slice(start).map((x,j)=>({...x,idx:start+j}));
   const maxV=Math.max(...win.map(x=>x.v),1);
   const mi=royaltyMonthIdx;
+  ensureMonthIdx(mi);
   const dep=monthDeposit(mi), set=monthSettle(mi);
-  /* 작품별 통계와 동일한 공통 정렬 · 판매종료이면서 해당 월 금액 없으면 미노출 */
+  /* 작품별 통계와 동일한 공통 정렬 · 판매종료이면서 해당 월 금액 없으면 미노출 · 과거 월은 정산 없는 작품도 미노출 */
   const sorted=[...WORKS].sort(workSort)
-    .filter(w=>!(workStatus(w)==='판매종료'&&!w.hist[mi]&&!workDeposit(w,mi)));
+    .filter(w=>!(workStatus(w)==='판매종료'&&!workSettleAt(w,mi)&&!workDeposit(w,mi)))
+    .filter(w=>mi>=0||workSettleAt(w,mi)||workDeposit(w,mi));
   return `
   <div class="month-row">
     <button onclick="swipeMonth(-1)">‹</button><span class="mlabel" onclick="openMonthPicker('royalty')">${mFull(mi)} ▾</span><button onclick="swipeMonth(1)">›</button>
@@ -1313,7 +1341,7 @@ function viewRoyaltyMonthly(){
     <div class="sub" style="margin-top:3px">총 정산금 ${fmt(set)}원${set!==dep?` · 선인세 차감 ${fmt(set-dep)}원`:''}</div>
     <div style="margin-top:8px">
     ${sorted.map(w=>{
-      const s=w.hist[mi], d=workDeposit(w,mi), st=workStatus(w);
+      const s=workSettleAt(w,mi), d=workDeposit(w,mi), st=workStatus(w);
       const remain=Math.max(0,w.advance-w.hist.slice(0,mi+1).reduce((a,v)=>a+v,0));
       return `<div class="acct" style="cursor:pointer" onclick="royaltySeg='works';openWork('${w.title}')">
         <div class="top"><b>${w.title}<span class="tag ${st==='판매중'?'gg':st==='판매종료'?'rr':''}">${st}</span></b><b class="amt-edit" onclick="event.stopPropagation();openWorkSettle(${WORKS.indexOf(w)},${mi})">${fmt(d)}원</b></div>
@@ -1327,7 +1355,7 @@ function viewRoyaltyMonthly(){
     ${!sorted.length&&!(OTHER_ROYALTY[mi]>0)?`<div class="note" style="padding:16px 0 6px">이 달에는 정산 내역이 없어요<br>아래 버튼으로 입력하거나 수정할 수 있어요</div>`:''}
     </div>
   </div>
-  <button class="save-btn" onclick="openRoyaltyInput(${mi})">${MLABELS[mi]} 정산 입력 · 수정</button>`;
+  <button class="save-btn" onclick="openRoyaltyInput(${mi})">${mKey(mi)} 정산 입력 · 수정</button>`;
 }
 
 /* 연도별 작품 인세 (2023~25 목데이터, 2026은 실데이터에서 계산) */
@@ -1698,9 +1726,10 @@ function delTxn(){TXNS=TXNS.filter(t=>t.id!==editId);toast('삭제되었습니�
 /* 스냅샷 일괄 입력 — 계좌별 평가금 (ISA 항목은 개별 관리) */
 function openInvestInput(){
   const mi=investMonthIdx;
+  if(mi<0){toast('2026년 이전 데이터는 수정할 수 없어요');return;}
   $('#sheet').innerHTML=`
   <div class="grab"></div>
-  <h2>${MLABELS[mi]} 일괄 입력<button class="close" onclick="closeSheet()">✕</button></h2>
+  <h2>${mKey(mi)} 일괄 입력<button class="close" onclick="closeSheet()">✕</button></h2>
   ${ACCOUNTS.map((a,i)=>`<div class="batchrow"><span class="bn">${a.name}</span><input type="number" data-a="${i}" placeholder="입력전" value="${a.vals[mi]??''}"></div>`).join('')}
   <button class="save-btn" style="margin-top:14px" onclick="saveInvestInput()">저장</button>
   <div class="note" style="padding:8px 0 0">ISA 하위 항목은 계좌 카드에서 개별 입력</div>`;
@@ -1717,12 +1746,14 @@ function saveInvestInput(){
 
 /* 단일 작품 월정산금 입력 — 월별 현황 행의 '정산 입력' 버튼 */
 function openWorkSettle(wi,mi){
+  if(mi<0){toast('과거 이관 데이터는 앱에서 수정할 수 없어요');return;}
   const w=WORKS[wi];
+  ensureMonthIdx(mi);
   $('#sheet').innerHTML=`
   <div class="grab"></div>
   <h2>${w.title} 정산 입력<button class="close" onclick="closeSheet()">✕</button></h2>
   <div class="flabel">대상 월</div>
-  <div class="frow"><select id="wsMi">${MLABELS.map((m,i)=>`<option value="${i}" ${i===mi?'selected':''}>${mFull(i)}</option>`).join('')}</select></div>
+  <div class="frow"><select id="wsMi">${[...Array(MLABELS.length+FUTURE_M)].map((_,i)=>`<option value="${i}" ${i===mi?'selected':''}>${mFull(i)}</option>`).join('')}</select></div>
   <div class="flabel">정산금 (세전 선택 시 ×96.7% 환산 저장)</div>
   <div class="frow">
     <select id="wsMode" style="flex:0 0 88px"><option value="net">세후</option><option value="gross">세전</option></select>
@@ -1734,6 +1765,7 @@ function openWorkSettle(wi,mi){
 }
 function saveWorkSettle(wi){
   const w=WORKS[wi], mi=+$('#wsMi').value, v=+$('#wsAmt').value||0;
+  ensureMonthIdx(mi);
   w.hist[mi]=$('#wsMode').value==='gross'?Math.round(v*0.967):v;
   closeSheet();toast(w.title+' · '+mFull(mi)+' 정산 저장');render();
 }
@@ -1741,7 +1773,9 @@ function saveWorkSettle(wi){
 /* 인세 정산 입력 — 대상 월 선택으로 과거 데이터 수정 가능. 세전 선택 시 ×96.7% 환산 */
 let royInputIdx=null, royShowEnded=false;
 function openRoyaltyInput(mi){
+  if(mi!=null&&mi<0){toast('과거 이관 데이터는 앱에서 수정할 수 없어요');return;}
   royInputIdx=(mi==null)?MLABELS.length-1:mi; mi=royInputIdx;
+  ensureMonthIdx(mi);
   const all=[...WORKS].sort(workSort);
   const sorted=all.filter(w=>royShowEnded||!(workStatus(w)==='판매종료'&&!w.hist[mi]));
   const hidden=all.length-sorted.length;
@@ -1750,7 +1784,7 @@ function openRoyaltyInput(mi){
   <h2>정산 입력 · 수정<button class="close" onclick="closeSheet()">✕</button></h2>
   <div class="flabel">대상 월 (과거 월 선택 시 기존 데이터 수정)</div>
   <div class="frow"><select onchange="openRoyaltyInput(+this.value)">
-    ${MLABELS.map((m,i)=>`<option value="${i}" ${i===mi?'selected':''}>${mFull(i)}</option>`).join('')}
+    ${[...Array(MLABELS.length+FUTURE_M)].map((_,i)=>`<option value="${i}" ${i===mi?'selected':''}>${mFull(i)}</option>`).join('')}
   </select></div>
   ${sorted.map(w=>{const i=WORKS.indexOf(w),st=workStatus(w);
   return `<div class="batchrow">
@@ -1793,7 +1827,7 @@ function saveRoyaltyInput(){
     if(i==='etc')OTHER_ROYALTY[mi]=net; else WORKS[+i].hist[mi]=net;
   });
   royShowEnded=false;
-  closeSheet();toast(MLABELS[mi]+' 정산 저장 완료');render();
+  closeSheet();toast(mKey(mi)+' 정산 저장 완료');render();
 }
 
 /* 작품 등록/수정 */
