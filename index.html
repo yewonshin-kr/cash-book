@@ -1256,10 +1256,10 @@ function viewRoyaltyMonthly(){
 
 /* 연도별 작품 인세 (2023~25 목데이터, 2026은 실데이터에서 계산) */
 const YEARLY_WORKS={}; /* 과거 연도 데이터는 시트에 입력/이관 후 표시 */
-function yearWorks(y){
+function yearWorks(y){ /* 작품별 연간 합계 — 정산금 기준 */
   if(+y<START_Y)return YEARLY_WORKS[y]||{};
   const idxs=yearIdxs(y), m={};
-  WORKS.forEach(w=>{const s=idxs.reduce((a,i)=>a+workDeposit(w,i),0);if(s>0)m[w.title]=s;});
+  WORKS.forEach(w=>{const s=idxs.reduce((a,i)=>a+(w.hist[i]||0),0);if(s>0)m[w.title]=s;});
   const etc=idxs.reduce((a,i)=>a+(OTHER_ROYALTY[i]||0),0);if(etc>0)m['기타']=etc;
   return m;
 }
@@ -1267,14 +1267,14 @@ function setRyear(y){royaltyYear=y;render();}
 
 function viewRoyaltyStats(){
   const curY=TODAY.slice(0,4);
-  /* 연도별 합계 (시작 연도~올해 자동 생성) */
+  /* 연도별 합계 — 정산금 기준 (시작 연도~올해 자동 생성) */
   const YEARS=[];
-  for(let y=START_Y;y<=+curY;y++){YEARS.push([String(y), yearIdxs(y).reduce((s,i)=>s+monthDeposit(i),0)]);}
+  for(let y=START_Y;y<=+curY;y++){YEARS.push([String(y), yearIdxs(y).reduce((s,i)=>s+monthSettle(i),0)]);}
   const thisYear=(YEARS.find(x=>x[0]===curY)||['',0])[1];
   const cum=WORKS.reduce((s,w)=>s+workCum(w),0);
-  /* 올해 연평균: 1월부터 정산금이 입력된 마지막 월까지의 월평균 */
-  let lastM=0; yearIdxs(curY).forEach(i=>{if(monthSettle(i)>0)lastM=+ymOf(i).slice(5,7);});
-  const avgMonthly=lastM>0?thisYear/lastM:0;
+  /* 올해 월평균: 정산금이 1원 이상 발생한 월들만의 평균 */
+  const settledCnt=yearIdxs(curY).filter(i=>monthSettle(i)>0).length;
+  const avgMonthly=settledCnt?thisYear/settledCnt:0;
   const maxY=Math.max(...YEARS.map(x=>x[1]),1);
   const yw=yearWorks(royaltyYear);
   const ywTotal=Object.values(yw).reduce((s,v)=>s+v,0)||1;
@@ -1284,10 +1284,10 @@ function viewRoyaltyStats(){
     <div class="hstats">
       <div class="hs"><span>전체 누적</span><b>${fmt(cum)}원</b></div>
       <div class="hs"><span>올해 누적</span><b>${fmt(thisYear)}원</b></div>
-      <div class="hs"><span>올해 연평균 (1~${lastM||1}월)</span><b>${fmt(avgMonthly)}원</b></div>
+      <div class="hs"><span>올해 월평균 (정산 ${settledCnt}개월)</span><b>${fmt(avgMonthly)}원</b></div>
     </div>
   </div>
-  <div class="card"><h3>연도별 인세 <span class="sub">과거 연도는 데이터 입력 후 표시</span></h3>
+  <div class="card"><h3>연도별 인세 <span class="sub">정산금 기준 · 선인세 차감 전</span></h3>
     <div class="chart" style="height:120px">
       ${YEARS.map(([y,v])=>`<div class="col" onclick="setRyear('${y}')">
         <span class="cv" style="color:${y===royaltyYear?'var(--accent-deep)':'var(--sub)'}">${kfmt(v)}</span>
@@ -1296,7 +1296,7 @@ function viewRoyaltyStats(){
       </div>`).join('')}
     </div>
   </div>
-  <div class="card"><h3>${royaltyYear}년 작품별 비중</h3>
+  <div class="card"><h3>${royaltyYear}년 작품별 비중 <span class="sub">정산금 기준</span></h3>
     ${ywSorted.map(([t,v])=>{const p=v/ywTotal*100;
     return `<div class="acct" style="padding:9px 0">
       <div class="top" style="font-size:13px"><b style="font-size:13px">${t}</b><span><b>${fmt(v)}원</b> <span class="sub">${p.toFixed(1)}%</span></span></div>
