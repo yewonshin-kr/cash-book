@@ -366,15 +366,16 @@ let SAVINGS=[
 /* 만기월: 누적 납입액을 자동 마이너스 (수기 수정 = maturityOverride) */
 const monthsBetween=(a,b)=>(+b.slice(0,4)-+a.slice(0,4))*12+(+b.slice(5,7)-+a.slice(5,7))+1;
 const isMaturityMonth=(s,ym)=>s.maturity&&s.maturity.slice(0,7)===ym;
-/* 만기 회수액: 예금 = 예치 원금, 적금 등 = 누적 납입액 */
-const matRefund=(s,ym)=>s.type==='예금'?-s.monthly:-(s.monthly*monthsBetween(s.start||ym,s.maturity));
+const isOneShot=s=>s.type==='예금'||s.subtype==='일회성'; /* 시작월 1회 반영형 (예금, 일회성 적금·투자원금) */
+/* 만기 회수액: 일회성 = 해당 원금, 정기 = 누적 납입액 */
+const matRefund=(s,ym)=>isOneShot(s)?-s.monthly:-(s.monthly*monthsBetween(s.start||ym,s.maturity));
 const savActive=(s,ym)=>{
-  if(s.type==='예금') return s.start===ym||isMaturityMonth(s,ym); /* 예치월·만기월에만 반영 */
+  if(isOneShot(s)) return s.start===ym||isMaturityMonth(s,ym); /* 납입월·만기월에만 반영 */
   return (!s.start||s.start<=ym)&&(!s.maturity||s.maturity.slice(0,7)>=ym);
 };
 function savAmount(s,ym){
   if(isMaturityMonth(s,ym))return s.maturityOverride!==undefined?s.maturityOverride:matRefund(s,ym);
-  return s.type==='예금'?(s.start===ym?s.monthly:0):s.monthly;
+  return isOneShot(s)?(s.start===ym?s.monthly:0):s.monthly;
 }
 /* 인세 통장 지출 (생활비와 분리) */
 const ROYALTY_SPEND=[0,0,0,0,0,0,0]; /* 실데이터: 지출 탭 '인세 지출' 분류 합계 사용 */
@@ -466,11 +467,15 @@ function workDeposit(w,i){
 }
 const monthDeposit=i=>WORKS.reduce((s,w)=>s+workDeposit(w,i),0)+(i<0?0:(OTHER_ROYALTY[i]||0));
 const monthSettle=i=>WORKS.reduce((s,w)=>s+workSettleAt(w,i),0)+(i<0?0:(OTHER_ROYALTY[i]||0));
-/* 월평균: 첫 정산 발생 월부터 계산 */
+/* 작품 월평균: 첫 정산 발생 월 ~ 최근 정산 월까지의 기간 평균 (중간 0원 달 포함, 과거 이관 이력 포함) */
 function workAvg(w){
-  const first=w.hist.findIndex(v=>v>0);
-  if(first<0)return null;
-  return w.hist.slice(first).reduce((s,v)=>s+v,0)/(w.hist.length-first);
+  const entries=Object.entries(PAST_HIST[w.title]||{}).map(([ym,v])=>[ym,v[0]]);
+  w.hist.slice(0,MLABELS.length).forEach((v,i)=>entries.push([ymOf(i),v||0]));
+  const act=entries.filter(([,v])=>v>0).map(([ym])=>ym).sort();
+  if(!act.length)return null;
+  const first=act[0], last=act[act.length-1];
+  const total=entries.filter(([ym])=>ym>=first&&ym<=last).reduce((s,[,v])=>s+v,0);
+  return total/monthsBetween(first,last);
 }
 /* 축약 표기 (그래프 라벨용) */
 const kfmt=n=>n===0?'0':(n>=100000000?(n/100000000).toFixed(1)+'억':(n/10000).toFixed(1)+'만');
@@ -846,7 +851,7 @@ function viewSettle(){
     <div class="setrow head"><span class="lbl">저축·투자 원금</span><span class="val">${fmt(savingSum)}원</span></div>
     ${savingList.map(s=>{const i=SAVINGS.indexOf(s),amt=savAmount(s,ym),mat=isMaturityMonth(s,ym);
     return `<div class="setrow indent" style="cursor:pointer" onclick="openSavingEdit(${i})">
-      <span class="lbl">${s.inst} ${s.type}${mat?'<span class="tag rr">만기 해지</span>':''}${!mat&&s.type==='적금'?`<span class="tag">${s.subtype==='자유'?'자유':'정기'}</span>`:''}${!mat&&s.maturity?`<span class="tag">만기 ${s.maturity.slice(2,7).replace('-','.')}</span>`:''}</span>
+      <span class="lbl">${s.inst} ${s.type}${mat?'<span class="tag rr">만기 해지</span>':''}${!mat&&(s.type==='적금'||s.type==='투자원금')&&s.subtype?`<span class="tag ${s.subtype==='일회성'?'gg':''}">${s.subtype}</span>`:''}${!mat&&s.maturity?`<span class="tag">만기 ${s.maturity.slice(2,7).replace('-','.')}</span>`:''}</span>
       <span class="val ${amt<0?'neg':''}">${fmt(amt)}원 ›</span></div>`;}).join('')}
     <div class="setrow indent" style="cursor:pointer" onclick="openSavingEdit()"><span class="lbl" style="color:var(--accent);font-weight:700">＋ 저축 등록</span><span></span></div>
   </div>
@@ -952,14 +957,14 @@ function openSavingEdit(idx){
   <div class="frow"><input type="text" id="sInst" placeholder="예: 신한은행, KB증권" value="${s?s.inst:''}"></div>
   <div class="flabel">유형</div>
   <div class="frow">
-    <select id="sType" onchange="$('#subWrap').style.display=this.value==='적금'?'flex':'none';var l=$('#sAmtLabel');if(l)l.textContent=amtLabel()">
+    <select id="sType" onchange="$('#subWrap').style.display=(this.value==='적금'||this.value==='투자원금')?'flex':'none';var l=$('#sAmtLabel');if(l)l.textContent=amtLabel()">
       ${['적금','예금','발행어음','투자원금'].map(t=>`<option ${s&&s.type===t?'selected':''}>${t}</option>`).join('')}
     </select>
   </div>
-  <div class="frow" id="subWrap" style="display:${!s||s.type==='적금'?'flex':'none'}">
+  <div class="frow" id="subWrap" style="display:${!s||s.type==='적금'||s.type==='투자원금'?'flex':'none'}">
     <select id="sSub" onchange="var l=$('#sAmtLabel');if(l)l.textContent=amtLabel()">
-      <option value="정기" ${s&&s.subtype!=='자유'?'selected':''}>정기 적금 (매월 자동 입력)</option>
-      <option value="자유" ${s&&s.subtype==='자유'?'selected':''}>자유 적금 (매월 직접 입력)</option>
+      <option value="정기" ${!s||s.subtype!=='일회성'?'selected':''}>정기 (매월 자동 반영)</option>
+      <option value="일회성" ${s&&s.subtype==='일회성'?'selected':''}>일회성 (시작월에 1회 반영)</option>
     </select>
   </div>
   <div class="flabel">시작월 · 만기일</div>
@@ -975,16 +980,15 @@ function openSavingEdit(idx){
 }
 function amtLabel(){
   const t=$('#sType').value;
-  if(t==='적금'&&$('#sSub').value==='자유')return'이번 달 입금액 (매월 직접 입력)';
-  if(t==='적금')return'월 납입액 (매월 자동 반영)';
   if(t==='예금')return'예치 금액 (시작월에 1회 반영, 만기월 자동 회수)';
-  if(t==='투자원금')return'이번 달 투자 원금';
+  if(t==='적금'||t==='투자원금')return $('#sSub').value==='일회성'?'납입 금액 (시작월에 1회 반영)':'월 납입액 (매월 자동 반영)';
   return'입금액';
 }
 function saveSaving(){
   const type=$('#sType').value;
-  const data={inst:$('#sInst').value,type,subtype:type==='적금'?$('#sSub').value:'',start:$('#sStart').value,maturity:$('#sMat').value,monthly:+$('#sAmt').value||0};
+  const data={inst:$('#sInst').value,type,subtype:(type==='적금'||type==='투자원금')?$('#sSub').value:'',start:$('#sStart').value,maturity:$('#sMat').value,monthly:+$('#sAmt').value||0};
   if(!data.inst){toast('은행/증권사를 입력하세요');return;}
+  if((type==='예금'||data.subtype==='일회성')&&!data.start){toast('일회성 납입은 시작월이 필요해요');return;}
   const over=$('#sOver');
   if(over&&over.value!=='')data.maturityOverride=+over.value;
   if(editSavingIdx!==null&&editSavingIdx!=='ry')SAVINGS[editSavingIdx]=data; else SAVINGS.push(data);
@@ -1347,6 +1351,10 @@ function viewRoyaltyMonthly(){
   const maxV=Math.max(...win.map(x=>x.v),1);
   ensureMonthIdx(mi);
   const dep=monthDeposit(mi), set=monthSettle(mi);
+  /* 요약: 해당 월 입금 · 전월 대비 · 연초~해당월 누적 입금 (월별 현황 = 입금 기준) */
+  const prevDep=mi-1>=PAST_MIN?monthDeposit(mi-1):0, diff=dep-prevDep;
+  const selY=+ymOf(mi).slice(0,4);
+  let ytdDep=0;for(let i=Math.max(PAST_MIN,idxOfYm(selY+'-01'));i<=mi;i++)ytdDep+=monthDeposit(i);
   /* 작품별 통계와 동일한 공통 정렬 · 판매종료이면서 해당 월 금액 없으면 미노출 · 과거 월은 정산 없는 작품도 미노출 */
   const sorted=[...WORKS].sort(workSort)
     .filter(w=>!(workStatus(w)==='판매종료'&&!workSettleAt(w,mi)&&!workDeposit(w,mi)))
@@ -1354,6 +1362,13 @@ function viewRoyaltyMonthly(){
   return `
   <div class="month-row">
     <button onclick="swipeMonth(-1)">‹</button><span class="mlabel" onclick="openMonthPicker('royalty')">${mFull(mi)} ▾</span><button onclick="swipeMonth(1)">›</button>
+  </div>
+  <div class="card hero">
+    <div class="hstats">
+      <div class="hs"><span>${+ymOf(mi).slice(5,7)}월 입금</span><b>${fmt(dep)}원</b></div>
+      <div class="hs"><span>전월 대비</span><b class="${diff>=0?'up':''}">${diff>=0?'+':'−'} ${fmt(Math.abs(diff))}원</b></div>
+      <div class="hs"><span>${selY}년 누적 입금</span><b>${fmt(ytdDep)}원</b></div>
+    </div>
   </div>
   <div class="card">
     <h3>월별 입금액</h3>
@@ -1414,11 +1429,18 @@ function viewRoyaltyStats(){
   /* 연도별 합계 — 정산금 기준 (과거 이관 데이터 + 시작 연도~올해 자동 생성) */
   const YEARS=Object.keys(YEARLY_WORKS).sort().map(y=>[y, Object.values(YEARLY_WORKS[y]).reduce((s,v)=>s+v,0)]);
   for(let y=START_Y;y<=+curY;y++){YEARS.push([String(y), yearIdxs(y).reduce((s,i)=>s+monthSettle(i),0)]);}
-  const thisYear=(YEARS.find(x=>x[0]===curY)||['',0])[1];
-  const cum=WORKS.reduce((s,w)=>s+workCum(w),0);
-  /* 올해 월평균: 정산금이 1원 이상 발생한 월들만의 평균 */
-  const settledCnt=yearIdxs(curY).filter(i=>monthSettle(i)>0).length;
-  const avgMonthly=settledCnt?thisYear/settledCnt:0;
+  /* 요약 3종은 선택 연도(royaltyYear) 기준 */
+  const ySel=royaltyYear;
+  const yTotal=(YEARS.find(x=>x[0]===ySel)||['',0])[1];
+  /* 선택 연도까지의 누적 — base(2025년 말 확정 누적) 기준으로 전후 가감 */
+  const baseSum=WORKS.reduce((s,w)=>s+w.base,0);
+  let cum=baseSum;
+  if(+ySel>=START_Y){for(let y=START_Y;y<=+ySel;y++)cum+=yearIdxs(y).reduce((s,i)=>s+monthSettle(i),0);}
+  else{for(let y=+ySel+1;y<START_Y;y++)cum-=yearIdxsAll(y).reduce((s,i)=>s+monthSettle(i),0);}
+  /* 선택 연도 월평균: 정산금이 1원 이상 발생한 월들만의 평균 */
+  const yiSel=+ySel>=START_Y?yearIdxs(ySel):yearIdxsAll(+ySel);
+  const settledCnt=yiSel.filter(i=>monthSettle(i)>0).length;
+  const avgMonthly=settledCnt?yTotal/settledCnt:0;
   const maxY=Math.max(...YEARS.map(x=>x[1]),1);
   const yw=yearWorks(royaltyYear);
   const ywTotal=Object.values(yw).reduce((s,v)=>s+v,0)||1;
@@ -1430,8 +1452,8 @@ function viewRoyaltyStats(){
   <div class="card hero">
     <div class="hstats">
       <div class="hs"><span>전체 누적</span><b>${fmt(cum)}원</b></div>
-      <div class="hs"><span>올해 누적</span><b>${fmt(thisYear)}원</b></div>
-      <div class="hs"><span>올해 월평균 (정산 ${settledCnt}개월)</span><b>${fmt(avgMonthly)}원</b></div>
+      <div class="hs"><span>당해 누적</span><b>${fmt(yTotal)}원</b></div>
+      <div class="hs"><span>당해 월평균</span><b>${fmt(avgMonthly)}원</b></div>
     </div>
   </div>
   <div class="card"><h3>연도별 인세</h3>
@@ -1454,7 +1476,17 @@ function viewRoyaltyStats(){
 
 function viewRoyaltyWorks(){
   const maxW=Math.max(...WORKS.map(w=>workCum(w)));
+  /* 요약: 상태별 작품 수 */
+  const stCnt=s=>WORKS.filter(w=>workStatus(w)===s).length;
   return `
+  <div class="card hero">
+    <div class="hstats" style="grid-template-columns:repeat(4,1fr)">
+      <div class="hs"><span>총작품</span><b>${WORKS.length}종</b></div>
+      <div class="hs"><span>판매중</span><b>${stCnt('판매중')}종</b></div>
+      <div class="hs"><span>출간전</span><b>${stCnt('출간전')}종</b></div>
+      <div class="hs"><span>판매종료</span><b>${stCnt('판매종료')}종</b></div>
+    </div>
+  </div>
   <div class="card"><h3>작품 ${WORKS.length}종 <span class="more" onclick="openWorkEdit()">+ 작품 등록</span></h3>
     ${[...WORKS].sort(workSort).map(w=>{
       const avg=workAvg(w), left=advanceLeft(w), st=workStatus(w);
