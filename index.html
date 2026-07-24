@@ -88,6 +88,8 @@ tr.unclass select.catsel{border-color:var(--amber);background:#fffdf6}
 .txrow .l2 .dt{font-size:11.5px;color:var(--sub);flex-shrink:0}
 .txrow .l2 .memo{font-size:11.5px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .catchip{font-size:10.5px;font-weight:700;background:var(--accent-soft);color:var(--accent);border-radius:5px;padding:2px 8px;flex-shrink:0;cursor:pointer}
+/* 탭하면 편집되는 금액 (터치 영역 확장 포함) */
+.amt-edit{cursor:pointer;text-decoration:underline dotted var(--accent);text-underline-offset:3px;padding:8px;margin:-8px;border-radius:6px}
 .txlist .tfoot{margin:0 -14px}
 .sortbar{display:flex;align-items:center;gap:2px;padding:0 4px 8px}
 .sortbar span{font-size:11px;color:var(--sub);margin-right:4px}
@@ -420,6 +422,13 @@ function workStatus(w){
   return (w.hist&&w.hist.some(v=>v>0))?'판매중':'출간전'; /* 출간일 미등록 시 정산 이력으로 판단 */
 }
 const STATUS_ORDER={'판매중':0,'출간전':1,'판매종료':2};
+/* 작품 공통 정렬: 판매중 → 출간전(등록순) → 판매종료, 같은 상태는 출간일 빠른 순 */
+function workSort(a,b){
+  const sa=STATUS_ORDER[workStatus(a)],sb=STATUS_ORDER[workStatus(b)];
+  if(sa!==sb)return sa-sb;
+  if(workStatus(a)==='출간전')return WORKS.indexOf(a)-WORKS.indexOf(b);
+  return (a.pubDate||'').localeCompare(b.pubDate||'');
+}
 const workCum=w=>w.base+w.hist.reduce((s,v)=>s+v,0);
 const advanceUsed=w=>w.hist.reduce((s,v)=>s+v,0);
 const advanceLeft=w=>Math.max(0,w.advance-advanceUsed(w));
@@ -615,7 +624,7 @@ function viewList(){
     return `${monthRow}
     <div class="card" style="text-align:center;padding:36px 16px">
       <b style="font-size:15px">${MLABELS[mi]} 상세 내역 없음</b>
-      <div class="sub" style="margin-top:6px">생활비 합계 ${fmt(MONTHLY[MLABELS[mi]]?MONTHLY[MLABELS[mi]].living:0)}원 · 상세 거래는 데이터 연동 후 표시</div>
+      <div class="sub" style="margin-top:6px">생활비 합계 ${fmt(MONTHLY[MLABELS[mi]]?MONTHLY[MLABELS[mi]].living:0)}원</div>
     </div>`;
   }
   const cats=['전체','미분류',...CATS.filter(c=>monthTxns.some(t=>t.category===c.name)).map(c=>c.short)];
@@ -1211,15 +1220,14 @@ function viewRoyaltyMonthly(){
   const maxV=Math.max(...win.map(x=>x.v),1);
   const mi=royaltyMonthIdx;
   const dep=monthDeposit(mi), set=monthSettle(mi);
-  /* 판매중 → 출간전 → 판매종료 순 정렬 · 판매종료이면서 해당 월 금액 없으면 미노출 */
-  const sorted=[...WORKS].sort((a,b)=>STATUS_ORDER[workStatus(a)]-STATUS_ORDER[workStatus(b)]||workDeposit(b,mi)-workDeposit(a,mi))
+  /* 작품별 통계와 동일한 공통 정렬 · 판매종료이면서 해당 월 금액 없으면 미노출 */
+  const sorted=[...WORKS].sort(workSort)
     .filter(w=>!(workStatus(w)==='판매종료'&&!w.hist[mi]&&!workDeposit(w,mi)));
   return `
   <div class="card">
     <h3>월별 입금액
       <select class="catsel" style="max-width:none" onchange="setRmonth(+this.value)">
         ${MLABELS.map((m,i)=>`<option value="${i}" ${i===mi?'selected':''}>${mFull(i)}</option>`).join('')}
-        <option disabled>─ 2025년 (연동 후) ─</option>
       </select>
     </h3>
     <div class="chart" style="height:120px">${win.map(x=>`
@@ -1240,7 +1248,7 @@ function viewRoyaltyMonthly(){
       const s=w.hist[mi], d=workDeposit(w,mi), st=workStatus(w);
       const remain=Math.max(0,w.advance-w.hist.slice(0,mi+1).reduce((a,v)=>a+v,0));
       return `<div class="acct" style="cursor:pointer" onclick="royaltySeg='works';openWork('${w.title}')">
-        <div class="top"><b>${w.title}<span class="tag ${st==='판매중'?'gg':st==='판매종료'?'rr':''}">${st}</span></b><b>${fmt(d)}원</b></div>
+        <div class="top"><b>${w.title}<span class="tag ${st==='판매중'?'gg':st==='판매종료'?'rr':''}">${st}</span></b><b class="amt-edit" onclick="event.stopPropagation();openWorkSettle(${WORKS.indexOf(w)},${mi})">${fmt(d)}원</b></div>
         <div style="margin-top:4px;font-size:12px;color:var(--sub);line-height:1.75">
           정산금 ${fmt(s)}원${w.advance?`<br>선인세 차감 ${fmt(s-d)}원<br>잔여 선인세 ${fmt(remain)}원`:''}
         </div>
@@ -1287,7 +1295,7 @@ function viewRoyaltyStats(){
       <div class="hs"><span>올해 월평균 (정산 ${settledCnt}개월)</span><b>${fmt(avgMonthly)}원</b></div>
     </div>
   </div>
-  <div class="card"><h3>연도별 인세 <span class="sub">정산금 기준 · 선인세 차감 전</span></h3>
+  <div class="card"><h3>연도별 인세</h3>
     <div class="chart" style="height:120px">
       ${YEARS.map(([y,v])=>`<div class="col" onclick="setRyear('${y}')">
         <span class="cv" style="color:${y===royaltyYear?'var(--accent-deep)':'var(--sub)'}">${kfmt(v)}</span>
@@ -1296,7 +1304,7 @@ function viewRoyaltyStats(){
       </div>`).join('')}
     </div>
   </div>
-  <div class="card"><h3>${royaltyYear}년 작품별 비중 <span class="sub">정산금 기준</span></h3>
+  <div class="card"><h3>${royaltyYear}년 작품별 비중</h3>
     ${ywSorted.map(([t,v])=>{const p=v/ywTotal*100;
     return `<div class="acct" style="padding:9px 0">
       <div class="top" style="font-size:13px"><b style="font-size:13px">${t}</b><span><b>${fmt(v)}원</b> <span class="sub">${p.toFixed(1)}%</span></span></div>
@@ -1309,12 +1317,7 @@ function viewRoyaltyWorks(){
   const maxW=Math.max(...WORKS.map(w=>workCum(w)));
   return `
   <div class="card"><h3>작품 ${WORKS.length}종 <span class="more" onclick="openWorkEdit()">+ 작품 등록</span></h3>
-    ${[...WORKS].sort((a,b)=>{
-      const sa=STATUS_ORDER[workStatus(a)],sb=STATUS_ORDER[workStatus(b)];
-      if(sa!==sb)return sa-sb;
-      if(workStatus(a)==='출간전')return WORKS.indexOf(a)-WORKS.indexOf(b); /* 등록순 */
-      return (a.pubDate||'').localeCompare(b.pubDate||''); /* 출간일 빠른 순 */
-    }).map(w=>{
+    ${[...WORKS].sort(workSort).map(w=>{
       const avg=workAvg(w), left=advanceLeft(w), st=workStatus(w);
       return `<div class="workrow" onclick="openWork('${w.title}')">
       <div class="wi">
@@ -1558,11 +1561,34 @@ function saveInvestInput(){
   closeSheet();toast('저장되었습니다');render();
 }
 
+/* 단일 작품 월정산금 입력 — 월별 현황 행의 '정산 입력' 버튼 */
+function openWorkSettle(wi,mi){
+  const w=WORKS[wi];
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>${w.title} 정산 입력<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="flabel">대상 월</div>
+  <div class="frow"><select id="wsMi">${MLABELS.map((m,i)=>`<option value="${i}" ${i===mi?'selected':''}>${mFull(i)}</option>`).join('')}</select></div>
+  <div class="flabel">정산금 (세전 선택 시 ×96.7% 환산 저장)</div>
+  <div class="frow">
+    <select id="wsMode" style="flex:0 0 88px"><option value="net">세후</option><option value="gross">세전</option></select>
+    <input type="number" id="wsAmt" placeholder="0" value="${w.hist[mi]||''}">
+  </div>
+  <button class="save-btn" onclick="saveWorkSettle(${wi})">저장</button>`;
+  openSheetEl();
+  $('#wsMi').addEventListener('change',()=>{$('#wsAmt').value=w.hist[+$('#wsMi').value]||'';});
+}
+function saveWorkSettle(wi){
+  const w=WORKS[wi], mi=+$('#wsMi').value, v=+$('#wsAmt').value||0;
+  w.hist[mi]=$('#wsMode').value==='gross'?Math.round(v*0.967):v;
+  closeSheet();toast(w.title+' · '+mFull(mi)+' 정산 저장');render();
+}
+
 /* 인세 정산 입력 — 대상 월 선택으로 과거 데이터 수정 가능. 세전 선택 시 ×96.7% 환산 */
 let royInputIdx=null, royShowEnded=false;
 function openRoyaltyInput(mi){
   royInputIdx=(mi==null)?MLABELS.length-1:mi; mi=royInputIdx;
-  const all=[...WORKS].sort((a,b)=>STATUS_ORDER[workStatus(a)]-STATUS_ORDER[workStatus(b)]);
+  const all=[...WORKS].sort(workSort);
   const sorted=all.filter(w=>royShowEnded||!(workStatus(w)==='판매종료'&&!w.hist[mi]));
   const hidden=all.length-sorted.length;
   $('#sheet').innerHTML=`
