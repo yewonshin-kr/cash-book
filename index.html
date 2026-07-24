@@ -76,6 +76,23 @@ table.data tr.dup td{opacity:.55}
 select.catsel{border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-size:11.5px;background:#fff;font-family:inherit;max-width:120px;color:var(--ink)}
 tr.unclass select.catsel{border-color:var(--amber);background:#fffdf6}
 .tfoot{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;font-size:12.5px;color:var(--sub);font-weight:600;border-top:1.5px solid var(--line)}
+/* 지출 내역 2줄 리스트 */
+.txlist{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:10px;padding:2px 14px 0;overflow:hidden}
+.txrow{padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.txlist .txrow:nth-last-child(2){border-bottom:0}
+.txrow.unclass{background:var(--amber-soft);margin:0 -14px;padding-left:14px;padding-right:14px}
+.txrow .l1{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.txrow .l1 .d{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.txrow .l1 .a{font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.txrow .l2{display:flex;align-items:center;gap:7px;margin-top:4px;min-width:0}
+.txrow .l2 .dt{font-size:11.5px;color:var(--sub);flex-shrink:0}
+.txrow .l2 .memo{font-size:11.5px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.catchip{font-size:10.5px;font-weight:700;background:var(--accent-soft);color:var(--accent);border-radius:5px;padding:2px 8px;flex-shrink:0;cursor:pointer}
+.txlist .tfoot{margin:0 -14px}
+.sortbar{display:flex;align-items:center;gap:2px;padding:0 4px 8px}
+.sortbar span{font-size:11px;color:var(--sub);margin-right:4px}
+.sortbar button{border:0;background:transparent;font-size:11.5px;font-weight:700;color:#b8bdc2;cursor:pointer;padding:3px 7px;border-radius:6px;font-family:inherit}
+.sortbar button.on{color:var(--accent-deep);background:var(--accent-soft)}
 .toolbar{display:flex;gap:7px;margin-bottom:10px}
 .toolbar button{border:1px solid var(--line);background:var(--card);border-radius:7px;padding:8px 12px;font-size:12px;font-weight:700;color:var(--ink);cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px}
 .toolbar button svg.i{width:14px;height:14px}
@@ -441,11 +458,31 @@ function renderNav(){
   const items=[['home',IC.home,'홈'],['settle',IC.chart,'결산'],['list',IC.list,'지출',uc],['invest',IC.trend,'투자'],['royalty',IC.pen,'인세']];
   $('#nav').innerHTML=items.map(it=>`<button class="${tab===it[0]?'on':''}" onclick="go('${it[0]}')">${it[1]}${it[2]}${it[3]?`<span class="badge" style="position:absolute;top:-3px;right:12px">${it[3]}</span>`:''}</button>`).join('');
 }
-function go(t){tab=t;if(t!=='royalty')royaltyWork=null;if(t!=='invest'){investItem=null;investAcc=null;}render();scrollTop();}
-function backWork(){royaltyWork=null;render();scrollTop();}
-function backItem(){investItem=null;investAcc=null;render();scrollTop();}
-function openInvestItem(i,ev){if(ev)ev.stopPropagation();investItem=i;investAcc=null;render();scrollTop();}
-function openAccountDetail(i){investAcc=i;investItem=null;render();scrollTop();}
+/* ===== 안드로이드/브라우저 뒤로가기 = 앱 내 뒤로가기 =====
+   내비게이션마다 이전 상태를 스택에 push. 뒤로가기 순서: 열린 시트 닫기 → 상세 뒤로 → 이전 탭.
+   스택이 비면 브라우저 기본 동작(앱 종료). */
+let histStack=[], suppressPop=false, sheetInHist=false;
+function pushHist(){
+  histStack.push({tab,royaltyWork,investItem,investAcc});
+  history.pushState({app:histStack.length},'');
+}
+window.addEventListener('popstate',()=>{
+  if(suppressPop){suppressPop=false;return;}
+  if($('#sheet').classList.contains('show')){ sheetInHist=false; closeSheet(true); return; }
+  const s=histStack.pop();
+  if(!s) return;
+  tab=s.tab; royaltyWork=s.royaltyWork; investItem=s.investItem; investAcc=s.investAcc;
+  render(); scrollTop();
+});
+function go(t){
+  if(t===tab&&!royaltyWork&&investItem===null&&investAcc===null)return;
+  pushHist();
+  tab=t;if(t!=='royalty')royaltyWork=null;if(t!=='invest'){investItem=null;investAcc=null;}render();scrollTop();
+}
+function backWork(){history.back();}
+function backItem(){history.back();}
+function openInvestItem(i,ev){if(ev)ev.stopPropagation();pushHist();investItem=i;investAcc=null;render();scrollTop();}
+function openAccountDetail(i){pushHist();investAcc=i;investItem=null;render();scrollTop();}
 /* 좌우 스와이프 → 월 이동 (월 구분이 있는 탭) */
 function swipeMonth(dir){
   const move=(cur,max)=>{const n=cur+dir;return(n<0||n>max)?null:n;};
@@ -461,12 +498,19 @@ function swipeInvest(d){tab='invest';swipeMonth(d);}
 /* ============ 홈 ============ */
 function spentByCat(){const m={};TXNS.forEach(t=>{if(t.category)m[t.category]=(m[t.category]||0)+t.amount;});return m;}
 
-/* 홈 체크리스트 수동 체크 상태 — 체크 시 날짜 기록 */
-let HOME_CHECKS={invest:null,royalty:null,allowance:null};
-function toggleCheck(k,ev){
+/* 홈 체크리스트 (설정에서 추가/수정/삭제 가능) — done: 체크한 날짜(YYYY-MM-DD), 이번 달만 유효 */
+let CHECKS=[
+  {id:'invest', tx:'투자 입력', go:'invest', done:''},
+  {id:'royalty', tx:'인세 정산 입력', go:'royalty', done:''},
+  {id:'allowance', tx:'부모님 용돈 입금', go:'', done:''},
+];
+function checkDoneNow(c){ return !!(c.done&&c.done.slice(0,7)===TODAY.slice(0,7)); }
+function checkHint(c){ return checkDoneNow(c)?(+c.done.slice(5,7))+'/'+(+c.done.slice(8,10)):''; }
+function toggleCheck(id,ev){
   ev.stopPropagation();
-  HOME_CHECKS[k]=HOME_CHECKS[k]?null:(+TODAY.slice(5,7))+'/'+(+TODAY.slice(8,10));
-  render();toast(HOME_CHECKS[k]?'완료 체크':'체크 해제');
+  const c=CHECKS.find(x=>x.id===id); if(!c)return;
+  c.done=checkDoneNow(c)?'':TODAY;
+  render();toast(c.done?'완료 체크':'체크 해제');
 }
 
 function viewHome(){
@@ -476,9 +520,7 @@ function viewHome(){
   const checks=[
    {st:'done',tx:'카드 내역 업로드',hint:'완료',go:'list'},
    {st:uc?'warn':'done',tx:'지출 분류',hint:uc?`미분류 ${uc}건`:'완료',go:'list'},
-   {key:'invest',st:HOME_CHECKS.invest?'done':'todo',tx:'투자 입력',hint:HOME_CHECKS.invest||'',go:'invest'},
-   {key:'royalty',st:HOME_CHECKS.royalty?'done':'todo',tx:'인세 정산 입력',hint:HOME_CHECKS.royalty||'',go:'royalty'},
-   {key:'allowance',st:HOME_CHECKS.allowance?'done':'todo',tx:'부모님 용돈 입금',hint:HOME_CHECKS.allowance||''},
+   ...CHECKS.map(c=>({key:c.id,st:checkDoneNow(c)?'done':'todo',tx:c.tx,hint:checkHint(c),go:c.go||''})),
   ];
   /* 결산 대시보드 — 최근 마감월(6월) 기준 */
   const li=MKEYS.length-1, lk=MKEYS[li], lym=ymOf(li);
@@ -577,30 +619,34 @@ function viewList(){
     <button onclick="exportCsv()">${IC.dl}CSV</button>
   </div>
   <div class="filters">${cats.map(c=>`<button class="fchip ${filterCat===c?'on':''} ${c==='미분류'&&uc?'alert':''}" onclick="setFilter('${c}')">${c}${c==='미분류'&&uc?` ${uc}`:''}</button>`).join('')}</div>
-  <div class="tablewrap">
-    <table class="data">
-      <thead><tr>
-        <th onclick="setSort('date')">날짜${arrow('date')}</th><th>적요</th>
-        <th class="num" onclick="setSort('amount')">금액${arrow('amount')}</th>
-        <th onclick="setSort('category')">지출구분${arrow('category')}</th><th>태그</th><th>메모</th>
-      </tr></thead>
-      <tbody>
-      ${list.map(t=>`<tr class="${!t.category?'unclass':''}">
-        <td class="sub">${t.date.slice(5).replace('-','.')}</td>
-        <td class="desc" title="${t.desc}" onclick="openManual(${t.id})">${t.desc}</td>
-        <td class="num ${t.amount<0?'pos':''}">${fmt(t.amount)}</td>
-        <td><select class="catsel" onchange="setCat(${t.id},this.value)">
-          <option value="">${!t.category?'⚠ 선택':'—'}</option>
-          ${CATS.map(c=>`<option value="${c.name}" ${t.category===c.name?'selected':''}>${c.short}</option>`).join('')}
-        </select></td>
-        <td>${t.welfare==='복지_카드'?'<span class="chip wc">복지카드</span>':t.welfare==='복지_포인트'?'<span class="chip wp">복지포인트</span>':''}</td>
-        <td class="sub">${t.memo||''}</td>
-      </tr>`).join('')}
-      </tbody>
-    </table>
+  <div class="sortbar"><span>정렬</span>
+    <button class="${sortKey==='date'?'on':''}" onclick="setSort('date')">날짜${arrow('date')}</button>
+    <button class="${sortKey==='amount'?'on':''}" onclick="setSort('amount')">금액${arrow('amount')}</button>
+  </div>
+  <div class="txlist">
+    ${list.map(t=>`<div class="txrow ${!t.category?'unclass':''}" onclick="openManual(${t.id})">
+      <div class="l1"><span class="d">${t.desc}</span><span class="a ${t.amount<0?'pos':''}">${fmt(t.amount)}원</span></div>
+      <div class="l2">
+        <span class="dt">${t.date.slice(5).replace('-','.')}</span>
+        ${catCell(t)}
+        ${t.welfare==='복지_카드'?'<span class="chip wc">복지카드</span>':t.welfare==='복지_포인트'?'<span class="chip wp">복지포인트</span>':''}
+        ${t.memo?`<span class="memo">${t.memo}</span>`:''}
+      </div>
+    </div>`).join('')}
     <div class="tfoot"><span>${list.length}건${uc&&filterCat==='전체'?` · <b style="color:var(--amber)">미분류 ${uc}건</b>`:''}</span><b style="color:var(--ink);font-size:13.5px">합계 ${fmt(total)}원</b></div>
   </div>
-  <div class="note">열 제목 클릭 = 정렬 · 지출구분 셀에서 바로 분류 · 적요 클릭 = 상세 수정</div>`;
+  <div class="note">카테고리 칩 탭 = 분류 변경 · 행 탭 = 상세 수정</div>`;
+}
+/* 분류 셀: 미분류(또는 수정 중)면 셀렉트, 분류 완료면 칩 */
+let editCatId=null;
+function catCell(t){
+  if(!t.category||editCatId===t.id){
+    return `<select class="catsel" onclick="event.stopPropagation()" onchange="setCat(${t.id},this.value)">
+      <option value="">${!t.category?'⚠ 선택':'—'}</option>
+      ${CATS.map(c=>`<option value="${c.name}" ${t.category===c.name?'selected':''}>${c.short}</option>`).join('')}
+    </select>`;
+  }
+  return `<span class="catchip" onclick="event.stopPropagation();editCatId=${t.id};render()">${catShort(t.category)}</span>`;
 }
 function setFilter(c){filterCat=c;render();}
 /* CSV 다운로드 — 현재 월 내역 */
@@ -619,7 +665,7 @@ function exportCsv(){
   toast('CSV 다운로드 완료');
 }
 function setSort(k){if(sortKey===k)sortDir*=-1;else{sortKey=k;sortDir=-1;}render();}
-function setCat(id,v){TXNS.find(x=>x.id===id).category=v;toast(v?`'${catShort(v)}' 분류 완료`:'미분류로 변경');render();}
+function setCat(id,v){TXNS.find(x=>x.id===id).category=v;editCatId=null;toast(v?`'${catShort(v)}' 분류 완료`:'미분류로 변경');render();}
 
 /* ============ 결산 ============ */
 function setSseg(s){settleSeg=s;render();scrollTop();}
@@ -1124,7 +1170,7 @@ function viewRoyalty(){
   ${royaltySeg==='monthly'?viewRoyaltyMonthly():royaltySeg==='stats'?viewRoyaltyStats():viewRoyaltyWorks()}`;
 }
 function setRseg(s){royaltySeg=s;render();scrollTop();}
-function openWork(t){royaltyWork=t;render();scrollTop();}
+function openWork(t){pushHist();royaltyWork=t;render();scrollTop();}
 
 function trendData(){return MLABELS.map((m,i)=>({m,v:monthDeposit(i)}));}
 function setRmonth(i){royaltyMonthIdx=i;render();}
@@ -1295,8 +1341,15 @@ function viewWorkDetail(){
 }
 
 /* ============ 시트: 가져오기/입력 ============ */
-function openSheetEl(){$('#overlay').classList.add('show');$('#sheet').classList.add('show');}
-function closeSheet(){$('#overlay').classList.remove('show');$('#sheet').classList.remove('show');}
+function openSheetEl(){
+  $('#overlay').classList.add('show');$('#sheet').classList.add('show');
+  if(!sheetInHist){ sheetInHist=true; history.pushState({sheet:1},''); }
+}
+function closeSheet(fromPop){
+  $('#overlay').classList.remove('show');$('#sheet').classList.remove('show');
+  if(sheetInHist&&!fromPop){ suppressPop=true; history.back(); }
+  sheetInHist=false;
+}
 
 /* ===== 카드 내역 가져오기 — 실제 파싱 ===== */
 let importMatrix=[],importRows=[],importMap=null;
@@ -1534,19 +1587,20 @@ function openWorkEdit(title){
   <div class="frow"><input type="text" id="wTitle" placeholder="작품명" value="${w?w.title:''}"></div>
   <div class="flabel">출판사</div>
   <div class="frow"><input type="text" id="wPub" placeholder="출판사" value="${w?w.publisher:''}"></div>
-  <div class="flabel">출간일 · 정산일</div>
+  <div class="flabel">상태</div>
   <div class="frow">
-    <input type="text" id="wDate" placeholder="출간일 (예: 2026-01-10)" value="${w?w.pubDate:''}">
-    <input type="text" id="wDay" placeholder="정산일 (예: 매월 15일)" value="${w?w.settleDay:''}">
-  </div>
-  <div class="flabel">선인세 (없으면 0) · 상태</div>
-  <div class="frow">
-    <input type="number" id="wAdv" placeholder="0" value="${w?w.advance:''}">
     <select id="wEnd">
       <option value="">자동 (출간일 기준)</option>
       <option value="1" ${w&&w.ended?'selected':''}>판매종료</option>
     </select>
   </div>
+  <div class="flabel">출간일 · 정산일</div>
+  <div class="frow">
+    <input type="date" id="wDate" value="${w?w.pubDate:''}">
+    <input type="text" id="wDay" placeholder="정산일 (예: 매월 15일)" value="${w?w.settleDay:''}">
+  </div>
+  <div class="flabel">선인세 (없으면 0)</div>
+  <div class="frow"><input type="number" id="wAdv" placeholder="0" value="${w?w.advance:''}"></div>
   <button class="save-btn" onclick="saveWork()">${editWork?'수정 저장':'등록'}</button>
   <div class="note" style="padding:8px 0 0">출간일이 지나면 자동으로 '출간전 → 판매중' 전환</div>`;
   openSheetEl();
@@ -1569,12 +1623,45 @@ function viewSettings(){
   ${row('저축 상품',`${SAVINGS.length}개`,'openSavingsList()')}
   ${row('고정지출',`${FIXED.length}건`,'openFixedList()')}
   ${row('인세 작품',`${WORKS.length}개`,'openWorksList()')}
+  ${row('월초 체크리스트',`${CHECKS.length}개 항목`,'openChecklistSettings()')}
   ${row('가져오기 열 매핑',mapSaved?'저장됨':'미설정','openMapEdit()')}
   ${row('데이터 내보내기','전체 지출 CSV','exportAllCsv()')}
   <div class="check ${driveOn()?'done':'todo'}" onclick="openConfigEdit()"><div class="st">${driveOn()?'✓':'·'}</div><div class="tx">구글 드라이브 동기화</div><span class="hint">${driveOn()?'연결됨':'미연결'} ›</span></div>
   </div>
   <div class="note">가계부 v0.17 · 구글 드라이브 자동 동기화 · ${syncLabel()}</div>`;
 }
+
+/* 월초 체크리스트 관리 */
+const CHECK_GO_OPTS=[['','이동 없음'],['list','지출 내역'],['invest','투자'],['royalty','인세'],['settle','결산']];
+function openChecklistSettings(){
+  const eq=v=>String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>월초 체크리스트<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="flabel">항목 이름 · 탭 시 이동할 화면</div>
+  ${CHECKS.map((c,i)=>`<div class="batchrow">
+    <input type="text" data-ci="${i}" value="${eq(c.tx)}" style="width:auto;flex:1;text-align:left">
+    <select class="mini" data-gi="${i}">${CHECK_GO_OPTS.map(([v,l])=>`<option value="${v}" ${c.go===v?'selected':''}>${l}</option>`).join('')}</select>
+    <button class="mini" style="border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--red);padding:6px 9px;cursor:pointer" onclick="delCheckItem(${i})">✕</button>
+  </div>`).join('')||'<div class="note">항목이 없어요. 아래에서 추가해주세요.</div>'}
+  <div class="frow" style="margin-top:12px"><input type="text" id="newCheckName" placeholder="새 항목 이름"><button class="save-btn" style="width:auto;padding:10px 16px" onclick="addCheckItem()">추가</button></div>
+  <button class="save-btn" style="margin-top:10px" onclick="saveCheckSettings()">저장</button>
+  <div class="note">'카드 내역 업로드'와 '지출 분류'는 자동 판정 항목이라 여기서 수정할 수 없어요.<br>체크 상태는 매달 1일에 자동으로 초기화됩니다.</div>`;
+  openSheetEl();
+}
+function collectCheckEdits(){
+  document.querySelectorAll('#sheet input[data-ci]').forEach(inp=>{const i=+inp.dataset.ci;if(CHECKS[i]&&inp.value.trim())CHECKS[i].tx=inp.value.trim();});
+  document.querySelectorAll('#sheet select[data-gi]').forEach(sel=>{const i=+sel.dataset.gi;if(CHECKS[i])CHECKS[i].go=sel.value;});
+}
+function addCheckItem(){
+  const v=$('#newCheckName').value.trim();
+  if(!v){toast('항목 이름을 입력해주세요');return;}
+  collectCheckEdits();
+  CHECKS.push({id:'c'+Date.now().toString(36),tx:v,go:'',done:''});
+  openChecklistSettings();
+}
+function delCheckItem(i){ collectCheckEdits(); CHECKS.splice(i,1); openChecklistSettings(); }
+function saveCheckSettings(){ collectCheckEdits(); closeSheet(); render(); toast('체크리스트가 저장되었습니다'); }
 
 /* 카테고리 · 예산 관리 */
 function openCatSettings(){
@@ -1733,6 +1820,7 @@ const SYNC_COLS={
   balance:{get:()=>BALANCE.map(v=>({v})),set:v=>BALANCE=v.map(x=>x.v)},
   categories:{get:()=>CATS,set:v=>CATS=v},
   rules:{get:()=>RULES,set:v=>RULES=v},
+  checklist:{get:()=>CHECKS,set:v=>CHECKS=v},
   meta:{get:()=>[{k:'budget_total',v:BUDGET_TOTAL}],set:v=>{const m=(v||[]).find(x=>x.k==='budget_total');if(m&&m.v)BUDGET_TOTAL=m.v;}},
 };
 function collectData(){const d={};Object.entries(SYNC_COLS).forEach(([k,c])=>d[k]=c.get());return d;}
