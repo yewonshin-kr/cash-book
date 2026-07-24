@@ -200,7 +200,7 @@ textarea.paste{width:100%;border:1.5px solid var(--line);border-radius:8px;paddi
 <div class="sheet" id="sheet"></div>
 <div class="toast" id="toast"></div>
 
-<script src="config.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 /* ============ 아이콘 (원톤 SVG) ============ */
 const IC={
@@ -1571,9 +1571,9 @@ function viewSettings(){
   ${row('인세 작품',`${WORKS.length}개`,'openWorksList()')}
   ${row('가져오기 열 매핑',mapSaved?'저장됨':'미설정','openMapEdit()')}
   ${row('데이터 내보내기','전체 지출 CSV','exportAllCsv()')}
-  <div class="check ${typeof CFG!=='undefined'&&CFG?'done':'todo'}" onclick="openConfigEdit()"><div class="st">${typeof CFG!=='undefined'&&CFG?'✓':'·'}</div><div class="tx">구글 시트 연결</div><span class="hint">${typeof CFG!=='undefined'&&CFG?'연결됨':'미연결'} ›</span></div>
+  <div class="check ${driveOn()?'done':'todo'}" onclick="openConfigEdit()"><div class="st">${driveOn()?'✓':'·'}</div><div class="tx">구글 드라이브 동기화</div><span class="hint">${driveOn()?'연결됨':'미연결'} ›</span></div>
   </div>
-  <div class="note">가계부 v0.16 · 실데이터 · 구글 시트 자동 동기화</div>`;
+  <div class="note">가계부 v0.17 · 구글 드라이브 자동 동기화 · ${syncLabel()}</div>`;
 }
 
 /* 카테고리 · 예산 관리 */
@@ -1696,21 +1696,30 @@ function exportAllCsv(){
 
 render();
 
-/* ============ 구글 시트 동기화 (config.js 있으면 활성화) ============ */
-/* 연결 설정: config.js 또는 앱 내 설정(localStorage) */
-const CFG=window.APP_CONFIG||(function(){try{const c=JSON.parse(localStorage.getItem('appConfig'));return(c&&c.url)?c:null;}catch(e){return null;}})();
+/* ============ 구글 드라이브 동기화 (GIS OAuth · 브라우저 직접 호출) ============ */
+/* ※ OAuth 클라이언트 ID는 Daily Hub와 공유합니다. 이 앱을 배포하는 주소(origin)가
+   해당 클라이언트 ID의 '승인된 JavaScript 원본'에 등록되어 있어야 작동합니다. */
+const GOOGLE_CLIENT_ID='678418587056-3b5b8l2frhjlmjsh6clh2967isnnkjgk.apps.googleusercontent.com';
+const G_SCOPES='https://www.googleapis.com/auth/drive.file';
+const DATA_FILE_NAME='my-budget-data.json';
+const LS_KEY='bud_v1';
+let gToken=null, tokenClient=null;
+let syncStatus={connected:false, busy:false,
+  last:localStorage.getItem('bud_lastSync')||null,
+  fileId:localStorage.getItem('bud_driveFileId')||null};
+let dataUpdatedAt=null;
+function driveOn(){ return localStorage.getItem('bud_syncOn')==='1'; }
 function openConfigEdit(){
-  const c=CFG||{url:'',token:''};
+  const on=driveOn();
   $('#sheet').innerHTML=`
   <div class="grab"></div>
-  <h2>구글 시트 연결<button class="close" onclick="closeSheet()">✕</button></h2>
-  <div class="flabel">Apps Script 웹 앱 URL</div>
-  <div class="frow"><input type="text" id="cfgUrl" placeholder="https://script.google.com/macros/s/.../exec" value="${c.url}"></div>
-  <div class="flabel">토큰 (Code.gs의 TOKEN과 동일)</div>
-  <div class="frow"><input type="text" id="cfgToken" placeholder="토큰" value="${c.token}"></div>
-  <button class="save-btn" onclick="localStorage.setItem('appConfig',JSON.stringify({url:$('#cfgUrl').value.trim(),token:$('#cfgToken').value.trim()}));location.reload()">저장 후 연결</button>
-  ${CFG?'<button class="save-btn ghost" onclick="localStorage.removeItem(\'appConfig\');location.reload()">연결 해제</button>':''}
-  <div class="note">이 기기 브라우저에만 저장됩니다 (localStorage)</div>`;
+  <h2>구글 드라이브 동기화<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="note" style="text-align:left;padding:0 2px 14px">연결하면 데이터가 내 구글 드라이브(${DATA_FILE_NAME})에 자동 저장되고, 다른 기기에서도 이어서 쓸 수 있어요. 연결하지 않으면 이 브라우저에만 저장됩니다.</div>
+  ${on?`<div class="inforow"><span class="k">상태</span><span class="v">${syncStatus.connected?'연결됨':'재연결 대기 (화면 터치 시 자동)'}</span></div>
+  <div class="inforow"><span class="k">동기화</span><span class="v">${syncLabel()}</span></div>
+  <button class="save-btn" style="margin-top:12px" onclick="syncNow(true)">지금 동기화</button>
+  <button class="save-btn ghost" onclick="disconnectDrive();closeSheet()">연결 해제</button>`
+  :`<button class="save-btn" onclick="connectDrive()">구글 계정 연결</button>`}`;
   openSheetEl();
 }
 const SYNC_COLS={
@@ -1726,62 +1735,164 @@ const SYNC_COLS={
   rules:{get:()=>RULES,set:v=>RULES=v},
   meta:{get:()=>[{k:'budget_total',v:BUDGET_TOTAL}],set:v=>{const m=(v||[]).find(x=>x.k==='budget_total');if(m&&m.v)BUDGET_TOTAL=m.v;}},
 };
-/* Apps Script 내부에서 실행 중이면 (HtmlService 배포) 토큰 없이 google.script.run 사용 */
-const IN_GAS=(typeof google!=='undefined'&&google.script&&google.script.run)?true:false;
-let syncTimer=null,syncing=false;
-function scheduleSync(){
-  if(!CFG&&!IN_GAS)return;
-  clearTimeout(syncTimer);
-  syncTimer=setTimeout(syncAll,1500); /* 변경 후 1.5초 뒤 일괄 저장 */
-}
 function collectData(){const d={};Object.entries(SYNC_COLS).forEach(([k,c])=>d[k]=c.get());return d;}
-async function syncAll(){
-  if(syncing)return;
-  if(IN_GAS){
-    syncing=true;
-    google.script.run
-      .withSuccessHandler(()=>{syncing=false;})
-      .withFailureHandler(()=>{syncing=false;toast('동기화 실패');})
-      .apiSaveAll(JSON.stringify(collectData()));
-    return;
-  }
-  if(!CFG)return; syncing=true;
-  try{
-    await fetch(CFG.url,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({token:CFG.token,action:'saveAll',data:collectData()})});
-  }catch(e){toast('동기화 실패 — 네트워크 확인');}
-  syncing=false;
-}
-function applyBoot(data){
-  if(typeof data==='string'){try{data=JSON.parse(data);}catch(e){return;}}
+function applyData(data){
+  if(typeof data==='string'){try{data=JSON.parse(data);}catch(e){return false;}}
+  if(!data) return false;
   let loaded=0;
   Object.entries(SYNC_COLS).forEach(([k,c])=>{
     if(Array.isArray(data[k])&&data[k].length){c.set(data[k]);loaded++;}
   });
-  if(loaded===0){syncAll();toast('시트가 비어 있어 초기 데이터를 업로드했습니다');}
-  else toast('구글 시트에서 불러왔습니다');
+  if(data.updatedAt) dataUpdatedAt=data.updatedAt;
+  return loaded>0;
+}
+/* ----- 로컬 저장 (기본 저장소) ----- */
+function saveLocal(){
+  dataUpdatedAt=new Date().toISOString();
+  const d=collectData(); d.updatedAt=dataUpdatedAt;
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(d)); }catch(e){}
+  return d;
+}
+function loadLocal(){
+  try{
+    const raw=localStorage.getItem(LS_KEY);
+    if(raw&&applyData(raw)) render();
+  }catch(e){}
+}
+/* 변경 발생 시: 즉시 로컬 저장 + 1.5초 뒤 드라이브 업로드 (디바운스) */
+let cloudTimer=null;
+function scheduleSync(){
+  saveLocal();
+  if(!gToken||!syncStatus.fileId) return;
+  clearTimeout(cloudTimer);
+  cloudTimer=setTimeout(async()=>{
+    try{ await uploadData(); markSynced(); }catch(e){}
+  },1500);
+}
+function markSynced(){ syncStatus.last=new Date().toISOString(); localStorage.setItem('bud_lastSync',syncStatus.last); }
+/* ----- GIS 토큰 발급/캐시/무음 갱신 ----- */
+function initTokenClient(){
+  if(tokenClient) return true;
+  if(typeof google==='undefined'||!google.accounts) return false;
+  tokenClient=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CLIENT_ID, scope:G_SCOPES, callback:onGToken});
+  return true;
+}
+function connectDrive(){
+  if(!initTokenClient()) return alert('구글 연결 스크립트를 아직 불러오는 중이에요. 잠시 후 다시 시도해주세요.');
+  tokenClient.requestAccessToken({prompt:''});
+}
+let pendingSilent=false;
+function cacheToken(tok,expiresIn){
+  localStorage.setItem('bud_tok',tok);
+  localStorage.setItem('bud_tokExp',String(Date.now()+((+expiresIn||3600)-90)*1000));
+}
+function clearTokenCache(){ localStorage.removeItem('bud_tok'); localStorage.removeItem('bud_tokExp'); }
+/* 팝업 차단 회피: 다음 화면 터치 시점(사용자 제스처)에 무음 토큰 요청 */
+function armSilentAuth(){
+  if(pendingSilent) return;
+  pendingSilent=true;
+  document.addEventListener('pointerdown',()=>{ pendingSilent=false;
+    if(initTokenClient()) tokenClient.requestAccessToken({prompt:''});
+  },{once:true});
+}
+/* 선제 갱신: 만료 10분 전이면 화면 터치 시 무음 재발급 */
+let lastAuthTry=0;
+function maybeRefreshToken(){
+  try{
+    if(!driveOn()) return;
+    const exp=+localStorage.getItem('bud_tokExp')||0;
+    if(Date.now()<exp-10*60*1000) return;
+    if(Date.now()-lastAuthTry<60*1000) return;
+    lastAuthTry=Date.now();
+    if(initTokenClient()) tokenClient.requestAccessToken({prompt:''});
+  }catch(e){}
+}
+document.addEventListener('pointerdown',maybeRefreshToken,{passive:true});
+function onGToken(resp){
+  if(resp.error){ syncStatus.connected=false; armSilentAuth(); return; }
+  const first=!driveOn();
+  gToken=resp.access_token; syncStatus.connected=true;
+  localStorage.setItem('bud_syncOn','1');
+  cacheToken(resp.access_token,resp.expires_in);
+  if(first){ closeSheet(); toast('구글 드라이브에 연결되었습니다'); render(); }
+  syncNow();
+}
+function disconnectDrive(){
+  if(gToken&&typeof google!=='undefined') try{ google.accounts.oauth2.revoke(gToken); }catch(e){}
+  gToken=null; syncStatus.connected=false;
+  localStorage.removeItem('bud_syncOn'); clearTokenCache();
   render();
 }
-async function bootFromSheet(){
-  if(IN_GAS){
-    google.script.run
-      .withSuccessHandler(applyBoot)
-      .withFailureHandler(()=>toast('시트 연결 실패 — 내장 데이터로 표시'))
-      .apiBootstrap();
-    return;
-  }
-  if(!CFG)return;
-  try{
-    const res=await fetch(`${CFG.url}?action=bootstrap&token=${encodeURIComponent(CFG.token)}`);
-    applyBoot(await res.json());
-  }catch(e){toast('시트 연결 실패 — 내장 데이터로 표시');}
+/* ----- Drive REST 직접 호출 ----- */
+async function gfetch(url,opt={}){
+  opt.headers=Object.assign({},opt.headers,{Authorization:'Bearer '+gToken});
+  const r=await fetch(url,opt);
+  if(r.status===401){ gToken=null; syncStatus.connected=false; clearTokenCache(); armSilentAuth(); throw new Error('auth'); }
+  if(!r.ok) throw new Error('http '+r.status);
+  return r;
 }
+async function findDataFile(){
+  if(syncStatus.fileId) return syncStatus.fileId;
+  const q=encodeURIComponent(`name='${DATA_FILE_NAME}' and trashed=false`);
+  const r=await gfetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`);
+  const j=await r.json();
+  if(j.files&&j.files.length){ syncStatus.fileId=j.files[0].id; localStorage.setItem('bud_driveFileId',syncStatus.fileId); return syncStatus.fileId; }
+  return null;
+}
+async function createDataFile(){
+  const boundary='bud'+Date.now();
+  const body=`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({name:DATA_FILE_NAME,mimeType:'application/json'})}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(saveLocal())}\r\n--${boundary}--`;
+  const r=await gfetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+    {method:'POST',headers:{'Content-Type':'multipart/related; boundary='+boundary},body});
+  const j=await r.json();
+  syncStatus.fileId=j.id; localStorage.setItem('bud_driveFileId',j.id);
+}
+async function uploadData(){
+  if(!syncStatus.fileId) return;
+  const d=collectData(); d.updatedAt=dataUpdatedAt||new Date().toISOString();
+  await gfetch(`https://www.googleapis.com/upload/drive/v3/files/${syncStatus.fileId}?uploadType=media`,
+    {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
+}
+/* 최신본 비교 동기화: updatedAt이 최신인 쪽을 채택 */
+async function syncNow(manual){
+  if(!gToken||syncStatus.busy){ if(manual&&!gToken) toast('재연결 대기 중 — 화면을 한 번 터치해주세요'); return; }
+  syncStatus.busy=true;
+  try{
+    const id=await findDataFile();
+    if(id){
+      const r=await gfetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`);
+      let remote=null; try{ remote=await r.json(); }catch(e){}
+      if(remote&&remote.updatedAt&&(!dataUpdatedAt||remote.updatedAt>dataUpdatedAt)){
+        if(applyData(remote)){ localStorage.setItem(LS_KEY,JSON.stringify(remote)); render(); if(manual) toast('드라이브에서 불러왔습니다'); }
+      } else {
+        await uploadData(); if(manual) toast('드라이브에 저장했습니다');
+      }
+    } else {
+      await createDataFile(); if(manual) toast('드라이브에 저장했습니다');
+    }
+    markSynced();
+  }catch(e){ if(manual) toast('동기화 실패 — 네트워크 확인'); }
+  syncStatus.busy=false;
+}
+function syncLabel(){
+  if(!syncStatus.last) return '동기화 이력 없음';
+  const d=new Date(syncStatus.last);
+  return '마지막 동기화 '+(d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+/* 자동 연결: 캐시 토큰이 유효하면 즉시 재사용, 만료면 첫 터치 시 무음 재발급 */
+window.addEventListener('load',()=>{
+  if(!driveOn()) return;
+  const tok=localStorage.getItem('bud_tok'), exp=+localStorage.getItem('bud_tokExp')||0;
+  if(tok&&Date.now()<exp){ gToken=tok; syncStatus.connected=true; syncNow(); }
+  else armSilentAuth();
+});
 /* 모든 사용자 액션(토스트 발생)에 저장 예약을 연결 */
 const _origToast=toast;
-toast=function(m){_origToast(m);if(m&&!m.includes('동기화')&&!m.includes('불러왔')&&!m.includes('연결 실패'))scheduleSync();};
-bootFromSheet();
+toast=function(m){_origToast(m);if(m&&!m.includes('동기화')&&!m.includes('불러왔')&&!m.includes('저장했')&&!m.includes('드라이브'))scheduleSync();};
+loadLocal();
 
 /* PWA: 앱처럼 설치하기 (GitHub Pages 배포 시) */
-if('serviceWorker' in navigator && !IN_GAS && location.protocol==='https:'){
+if('serviceWorker' in navigator && location.protocol==='https:'){
   navigator.serviceWorker.register('./sw.js').catch(()=>{});
 }
 
