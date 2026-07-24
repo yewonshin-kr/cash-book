@@ -26,6 +26,11 @@ header .back{border:0;background:var(--bg);width:29px;height:29px;border-radius:
 .gear{border:0;background:var(--bg);width:33px;height:33px;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--sub)}
 .month-row{display:flex;justify-content:center;align-items:center;gap:16px;padding:10px 0 12px;font-weight:800;font-size:14.5px}
 .month-row button{border:0;background:var(--card);width:27px;height:27px;border-radius:7px;box-shadow:var(--shadow);font-size:13px;color:var(--sub);cursor:pointer}
+.month-row .mlabel{cursor:pointer;padding:6px 8px;margin:-6px -8px;border-radius:7px}
+/* 월 선택 시트 */
+.mpick{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.mpick button{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:12px 4px;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer;font-family:inherit}
+.mpick button.on{background:var(--accent);border-color:var(--accent);color:#fff}
 main{flex:1;padding:4px 14px 96px;overflow-x:hidden}
 .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-bottom:10px}
 /* 타이포 하이라키: 페이지 타이틀 18 > 섹션 14.5 > 카드(영역) 타이틀 13.5(잉크) > 행 13~13.5 > 보조 11.5~12.5(그레이) */
@@ -448,7 +453,7 @@ function workAvg(w){
 const kfmt=n=>n===0?'0':(n>=100000000?(n/100000000).toFixed(1)+'억':(n/10000).toFixed(1)+'만');
 
 /* ============ 상태 ============ */
-let tab='home',sortKey='date',sortDir=-1,royaltyWork=null,royaltySeg='monthly',royaltyMonthIdx=MLABELS.length-2,settleIdx=Math.max(0,idxOfYm(TODAY.slice(0,7))-1),royaltyYear=TODAY.slice(0,4),settleSeg='month',listMonthIdx=MLABELS.length-2,investMonthIdx=MLABELS.length-2,investItem=null,investAcc=null,yearCat=null,investSeg='month';
+let tab='home',sortKey='date',sortDir=-1,royaltyWork=null,royaltySeg='monthly',royaltyMonthIdx=MLABELS.length-1,settleIdx=Math.max(0,idxOfYm(TODAY.slice(0,7))-1),royaltyYear=TODAY.slice(0,4),settleSeg='month',listMonthIdx=MLABELS.length-1,investMonthIdx=MLABELS.length-2,investItem=null,investAcc=null,yearCat=null,investSeg='month';
 
 const $=s=>document.querySelector(s);
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1900);}
@@ -514,6 +519,22 @@ function swipeMonth(dir){
   else if(tab==='invest'&&investSeg==='month'){const n=move(investMonthIdx,MLABELS.length-1);if(n===null){toast(dir>0?'다음 달 데이터 없음':'이전 달 데이터는 연동 후 제공');return;}investMonthIdx=n;render();}
 }
 function setSettle(i){settleIdx=i;render();}
+/* 월 이동바 라벨 탭 → 월 선택 시트 */
+function openMonthPicker(target){
+  const cur={list:listMonthIdx,settle:settleIdx,royalty:royaltyMonthIdx,invest:investMonthIdx}[target];
+  $('#sheet').innerHTML=`
+  <div class="grab"></div>
+  <h2>월 선택<button class="close" onclick="closeSheet()">✕</button></h2>
+  <div class="mpick">${MLABELS.map((m,i)=>`<button class="${i===cur?'on':''}" onclick="pickMonth('${target}',${i})">${mFull(i)}</button>`).join('')}</div>`;
+  openSheetEl();
+}
+function pickMonth(t,i){
+  if(t==='list')listMonthIdx=i;
+  else if(t==='settle')settleIdx=i;
+  else if(t==='invest')investMonthIdx=i;
+  else royaltyMonthIdx=i;
+  closeSheet();render();scrollTop();
+}
 function swipeList(d){tab='list';swipeMonth(d);}
 function swipeInvest(d){tab='invest';swipeMonth(d);}
 
@@ -538,10 +559,12 @@ function toggleCheck(id,ev){
 function viewHome(){
   const LAST=MLABELS.length-2; /* 지난달 */
   const total=liveLiving(LAST);
-  const uc=unclassCount();
+  /* 결산 체크리스트는 지난달 기준으로 판정 */
+  const hasTxnsLast=TXNS.some(t=>txnM(t)===LAST);
+  const ucLast=TXNS.filter(t=>txnM(t)===LAST&&!t.category).length;
   const checks=[
-   {st:'done',tx:'카드 내역 업로드',hint:'완료',go:'list'},
-   {st:uc?'warn':'done',tx:'지출 분류',hint:uc?`미분류 ${uc}건`:'완료',go:'list'},
+   {st:hasTxnsLast?'done':'todo',tx:'카드 내역 업로드',hint:hasTxnsLast?'완료':'내역 없음',go:'list'},
+   {st:ucLast?'warn':(hasTxnsLast?'done':'todo'),tx:'지출 분류',hint:ucLast?`미분류 ${ucLast}건`:(hasTxnsLast?'완료':''),go:'list'},
    ...CHECKS.map(c=>({key:c.id,st:checkDoneNow(c)?'done':'todo',tx:c.tx,hint:checkHint(c),go:c.go||''})),
   ];
   /* 결산 대시보드 — 지난달 기준 (실시간 계산) */
@@ -558,9 +581,11 @@ function viewHome(){
   return `
   <div class="sect" style="margin-top:8px">${MLABELS[MLABELS.length-2]} 결산 체크리스트</div>
   <div class="card">
-    ${checks.map(c=>`<div class="check ${c.st}" onclick="${c.go?`go('${c.go}')`:''}">
-      <div class="st" ${c.key?`onclick="toggleCheck('${c.key}',event)"`:''}>${c.st==='done'?'✓':c.st==='warn'?'!':'·'}</div>
-      <div class="tx">${c.tx}</div><span class="hint">${c.hint||(c.key?'○ 체크':'')}</span><span class="goarr">${c.go?'›':''}</span>
+    ${checks.map(c=>`<div class="check ${c.st}" style="cursor:default">
+      <div class="st" ${c.key?`onclick="toggleCheck('${c.key}',event)" style="cursor:pointer"`:''}>${c.st==='done'?'✓':c.st==='warn'?'!':'·'}</div>
+      <div class="tx" ${c.go?`onclick="go('${c.go}')" style="cursor:pointer"`:''}>${c.tx}</div>
+      <span class="hint" ${c.key?`onclick="toggleCheck('${c.key}',event)" style="cursor:pointer;padding:8px 0 8px 10px"`:''}>${c.hint||(c.key?'○ 체크':'')}</span>
+      <span class="goarr" ${c.go?`onclick="go('${c.go}')" style="cursor:pointer"`:''}>${c.go?'›':''}</span>
     </div>`).join('')}
   </div>
 
@@ -615,7 +640,7 @@ function viewList(){
   const mi=listMonthIdx;
   const monthTxns=TXNS.filter(t=>txnM(t)===mi);
   const uc=monthTxns.filter(t=>!t.category).length;
-  const monthRow=`<div class="month-row"><button onclick="swipeMonth(-1)">‹</button><span>${mFull(mi)}</span><button onclick="swipeMonth(1)">›</button></div>`;
+  const monthRow=`<div class="month-row"><button onclick="swipeMonth(-1)">‹</button><span class="mlabel" onclick="openMonthPicker('list')">${mFull(mi)} ▾</span><button onclick="swipeMonth(1)">›</button></div>`;
   if(monthTxns.length===0){
     return `${monthRow}
     <div class="card" style="text-align:center;padding:36px 16px">
@@ -754,7 +779,7 @@ function viewSettle(){
   return `
   <div class="seg"><button class="${settleSeg==='month'?'on':''}" onclick="setSseg('month')">월 결산</button><button class="${settleSeg==='year'?'on':''}" onclick="setSseg('year')">연간 통계</button></div>
   <div class="month-row">
-    <button onclick="swipeMonth(-1)">‹</button><span>${mFull(settleIdx)}</span><button onclick="swipeMonth(1)">›</button>
+    <button onclick="swipeMonth(-1)">‹</button><span class="mlabel" onclick="openMonthPicker('settle')">${mFull(settleIdx)} ▾</span><button onclick="swipeMonth(1)">›</button>
   </div>
   <div class="card hero">
     <h3 class="big">${label} 마감 요약</h3>
@@ -1013,7 +1038,7 @@ function viewInvestMonth(){
   const rate=val==null?null:((val+div-dep)/dep*100);
   return `
   <div class="month-row">
-    <button onclick="swipeMonth(-1)">‹</button><span>${mFull(mi)}</span><button onclick="swipeMonth(1)">›</button>
+    <button onclick="swipeMonth(-1)">‹</button><span class="mlabel" onclick="openMonthPicker('invest')">${mFull(mi)} ▾</span><button onclick="swipeMonth(1)">›</button>
   </div>
   <div class="card hero">
     <h3>총 평가금</h3>
@@ -1268,12 +1293,11 @@ function viewRoyaltyMonthly(){
   const sorted=[...WORKS].sort(workSort)
     .filter(w=>!(workStatus(w)==='판매종료'&&!w.hist[mi]&&!workDeposit(w,mi)));
   return `
+  <div class="month-row">
+    <button onclick="swipeMonth(-1)">‹</button><span class="mlabel" onclick="openMonthPicker('royalty')">${mFull(mi)} ▾</span><button onclick="swipeMonth(1)">›</button>
+  </div>
   <div class="card">
-    <h3>월별 입금액
-      <select class="catsel" style="max-width:none" onchange="setRmonth(+this.value)">
-        ${MLABELS.map((m,i)=>`<option value="${i}" ${i===mi?'selected':''}>${mFull(i)}</option>`).join('')}
-      </select>
-    </h3>
+    <h3>월별 입금액</h3>
     <div class="chart" style="height:120px">${win.map(x=>`
       <div class="col" onclick="setRmonth(${x.idx})">
         <span class="cv" style="color:${x.idx===mi?'var(--accent-deep)':'var(--sub)'}">${kfmt(x.v)}</span>
@@ -1319,6 +1343,12 @@ function yearWorks(y){ /* 작품별 연간 합계 — 정산금 기준 */
   return m;
 }
 function setRyear(y){royaltyYear=y;render();}
+function moveRyear(d){
+  const minY=Math.min(...Object.keys(YEARLY_WORKS).map(Number),START_Y), maxY=+TODAY.slice(0,4);
+  const n=+royaltyYear+d;
+  if(n<minY||n>maxY){toast(d>0?'다음 연도 데이터 없음':'이전 연도 데이터 없음');return;}
+  royaltyYear=String(n);render();
+}
 
 function viewRoyaltyStats(){
   const curY=TODAY.slice(0,4);
@@ -1335,6 +1365,9 @@ function viewRoyaltyStats(){
   const ywTotal=Object.values(yw).reduce((s,v)=>s+v,0)||1;
   const ywSorted=Object.entries(yw).sort((a,b)=>b[1]-a[1]);
   return `
+  <div class="month-row">
+    <button onclick="moveRyear(-1)">‹</button><span>${royaltyYear}년</span><button onclick="moveRyear(1)">›</button>
+  </div>
   <div class="card hero">
     <div class="hstats">
       <div class="hs"><span>전체 누적</span><b>${fmt(cum)}원</b></div>
@@ -1449,18 +1482,39 @@ function closeSheet(fromPop){
 /* ===== 카드 내역 가져오기 — 실제 파싱 ===== */
 let importMatrix=[],importRows=[],importMap=null;
 
-function parseCsvLine(line,delim){
-  const out=[];let cur='',q=false;
-  for(let i=0;i<line.length;i++){const ch=line[i];
-    if(q){if(ch==='"'){if(line[i+1]==='"'){cur+='"';i++;}else q=false;}else cur+=ch;}
-    else{if(ch==='"')q=true;else if(ch===delim){out.push(cur);cur='';}else cur+=ch;}}
-  out.push(cur);return out.map(s=>s.trim());
+/* CSV 상태머신 파서 — 따옴표 안 줄바꿈·이중따옴표 지원 (BC카드 등 멀티라인 셀 포맷 대응) */
+function csvParse(text,delim){
+  const rows=[];let row=[],cur='',q=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(q){
+      if(ch==='"'){if(text[i+1]==='"'){cur+='"';i++;}else q=false;}
+      else cur+=ch;
+    }else{
+      if(ch==='"')q=true;
+      else if(ch===delim){row.push(cur);cur='';}
+      else if(ch==='\n'||ch==='\r'){
+        if(ch==='\r'&&text[i+1]==='\n')i++;
+        row.push(cur);cur='';
+        if(row.some(c=>c.trim()!==''))rows.push(row);
+        row=[];
+      }
+      else cur+=ch;
+    }
+  }
+  row.push(cur);
+  if(row.some(c=>c.trim()!==''))rows.push(row);
+  return rows;
 }
 function parseImportText(text){
-  const lines=text.split(/\r?\n/).filter(l=>l.trim()!=='');
-  if(!lines.length)return[];
-  const delim=text.includes('\t')?'\t':',';
-  return lines.map(l=>parseCsvLine(l,delim));
+  text=String(text||'').replace(/^﻿/,'');
+  /* 구분자 감지: 따옴표 밖의 , 탭 ; 개수 비교 (따옴표 안 탭 패딩에 속지 않도록) */
+  let q=false;const counts={',':0,'\t':0,';':0};
+  for(let i=0;i<text.length;i++){const ch=text[i];
+    if(ch==='"')q=!q; else if(!q&&counts[ch]!==undefined)counts[ch]++;}
+  const delim=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
+  /* 셀 내부 줄바꿈·탭·연속 공백 정리 */
+  return csvParse(text,delim).map(r=>r.map(c=>c.replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim()));
 }
 function normDate(s){
   s=String(s||'').trim();
@@ -1475,9 +1529,15 @@ function normAmount(s){
   if(!/^-?\d+(\.\d+)?$/.test(s))return null;
   return Math.round(+s);
 }
-/* 열 자동 감지: 날짜/금액/적요 */
+/* 열 자동 감지: 헤더 키워드 우선, 없으면 값 스코어링 */
 function detectMap(mx){
   const n=Math.max(...mx.map(r=>r.length));
+  const hd=mx[0]||[];
+  const find=(re,ex)=>hd.findIndex(h=>re.test(h||'')&&!(ex&&ex.test(h||'')));
+  const hDate=find(/일시|거래일|이용일|승인일|일자|날짜/);
+  const hAmt=find(/승인금액|이용금액|거래금액|금액|출금/,/취소|할인|포인트|할부/);
+  const hDesc=find(/가맹점|적요|내용|사용처|상호|이용하신/);
+  if(hDate>=0&&hAmt>=0&&hDesc>=0)return{d:hDate,a:hAmt,t:hDesc};
   const sc=Array.from({length:n},()=>({d:0,a:0,t:0}));
   mx.slice(0,15).forEach(r=>{for(let i=0;i<n;i++){const v=r[i]||'';
     if(normDate(v))sc[i].d++;
@@ -1502,21 +1562,50 @@ function openImport(){
   $('#sheet').innerHTML=`
   <div class="grab"></div>
   <h2>카드 내역 가져오기<button class="close" onclick="closeSheet()">✕</button></h2>
-  <input type="file" id="impFile" accept=".csv,.txt,.tsv" style="display:none" onchange="handleImportFile(this)">
+  <input type="file" id="impFile" accept=".csv,.txt,.tsv,.xlsx,.xls" style="display:none" onchange="handleImportFile(this)">
   <div class="upload-zone" onclick="$('#impFile').click()">
-    <b>CSV 파일 업로드</b>카드사에서 받은 CSV/텍스트 파일 선택 (엑셀 파일은 CSV로 저장 후 업로드)
+    <b>CSV · 엑셀 파일 업로드</b>카드사에서 받은 CSV, 텍스트, 엑셀(xlsx/xls) 파일 선택
   </div>
   <textarea class="paste" id="impPaste" placeholder="또는 카드사 홈페이지/엑셀에서 내역을 복사해서 여기에 붙여넣기 (날짜·적요·금액이 포함된 표)"></textarea>
   <button class="save-btn" onclick="parseFromPaste()">파싱 미리보기</button>`;
   openSheetEl();
 }
+/* 엑셀 파서(SheetJS) — 엑셀 업로드 시에만 CDN에서 지연 로드 */
+let xlsxLoading=null;
+function loadXLSX(){
+  if(typeof XLSX!=='undefined')return Promise.resolve();
+  if(xlsxLoading)return xlsxLoading;
+  xlsxLoading=new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload=res;s.onerror=()=>{xlsxLoading=null;rej();};
+    document.head.appendChild(s);
+  });
+  return xlsxLoading;
+}
 function handleImportFile(input){
   const f=input.files[0]; if(!f)return;
+  const ext=(f.name.split('.').pop()||'').toLowerCase();
   const rd=new FileReader();
-  rd.onload=()=>{
+  rd.onload=async()=>{
+    if(ext==='xlsx'||ext==='xls'){
+      try{
+        await loadXLSX();
+        const wb=XLSX.read(rd.result,{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        importMatrix=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''})
+          .map(r=>r.map(c=>String(c??'').replace(/[\r\n\t]+/g,' ').replace(/\s+/g,' ').trim()))
+          .filter(r=>r.some(c=>c!==''));
+        if(!importMatrix.length){toast('표 형식을 인식하지 못했습니다');return;}
+        afterMatrix();
+      }catch(e){toast('엑셀 파일을 읽지 못했어요 — 네트워크 연결 확인');}
+      input.value='';
+      return;
+    }
     let text=new TextDecoder('utf-8').decode(rd.result);
     if((text.match(/�/g)||[]).length>2) text=new TextDecoder('euc-kr').decode(rd.result); /* 한글 인코딩 자동 처리 */
     startPreview(text);
+    input.value='';
   };
   rd.readAsArrayBuffer(f);
 }
@@ -1528,11 +1617,16 @@ function parseFromPaste(){
 function startPreview(text){
   importMatrix=parseImportText(text);
   if(!importMatrix.length){toast('표 형식을 인식하지 못했습니다');return;}
+  afterMatrix();
+}
+function afterMatrix(){
   const saved=localStorage.getItem('importMap');
   importMap=saved?JSON.parse(saved):detectMap(importMatrix);
   const n=Math.max(...importMatrix.map(r=>r.length));
   if(importMap.d>=n||importMap.a>=n||importMap.t>=n)importMap=detectMap(importMatrix);
   buildImportRows();
+  /* 저장된 열 매핑이 다른 카드사 포맷이면 자동 재감지 */
+  if(!importRows.length){importMap=detectMap(importMatrix);buildImportRows();}
   renderImportPreview();
 }
 function setImpMap(key,val){importMap[key]=+val;buildImportRows();renderImportPreview();}
@@ -1751,7 +1845,7 @@ function viewSettings(){
   ${row('고정지출',`${FIXED.length}건`,'openFixedList()')}
   ${row('인세 작품',`${WORKS.length}개`,'openWorksList()')}
   ${row('인세 적금 기초 잔고',fmt(RY_BASE)+'원','openRyBaseEdit()')}
-  ${row('월초 체크리스트',`${CHECKS.length}개 항목`,'openChecklistSettings()')}
+  ${row('결산 체크리스트',`${CHECKS.length}개 항목`,'openChecklistSettings()')}
   ${row('가져오기 열 매핑',mapSaved?'저장됨':'미설정','openMapEdit()')}
   ${row('데이터 내보내기','전체 지출 CSV','exportAllCsv()')}
   <div class="check ${driveOn()?'done':'todo'}" onclick="openConfigEdit()"><div class="st">${driveOn()?'✓':'·'}</div><div class="tx">구글 드라이브 동기화</div><span class="hint">${driveOn()?'연결됨':'미연결'} ›</span></div>
@@ -1759,13 +1853,13 @@ function viewSettings(){
   <div class="note">가계부 v0.17 · 구글 드라이브 자동 동기화 · ${syncLabel()}</div>`;
 }
 
-/* 월초 체크리스트 관리 */
+/* 결산 체크리스트 관리 */
 const CHECK_GO_OPTS=[['','이동 없음'],['list','지출 내역'],['invest','투자'],['royalty','인세'],['settle','결산']];
 function openChecklistSettings(){
   const eq=v=>String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
   $('#sheet').innerHTML=`
   <div class="grab"></div>
-  <h2>월초 체크리스트<button class="close" onclick="closeSheet()">✕</button></h2>
+  <h2>결산 체크리스트<button class="close" onclick="closeSheet()">✕</button></h2>
   <div class="flabel">항목 이름 · 탭 시 이동할 화면</div>
   ${CHECKS.map((c,i)=>`<div class="batchrow">
     <input type="text" data-ci="${i}" value="${eq(c.tx)}" style="width:auto;flex:1;text-align:left">
