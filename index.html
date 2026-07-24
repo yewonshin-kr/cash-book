@@ -398,6 +398,16 @@ function ensureMonths(){
   MLABELS.forEach(l=>{if(!INCOMES[l])INCOMES[l]={salary:0,etc:[]};});
   /* 데이터 교정 (2026-07): 윈터스파클 base 오입력 — 저장본에도 적용 */
   const wf=WORKS.find(w=>w.title==='윈터스파클'); if(wf&&wf.base===2000000)wf.base=2009562;
+  /* 데이터 이관 (2026-07, 기기당 1회): 과거 목돈 예금 2건 — 저장본이 초기값을 덮어써도 등록되도록 */
+  try{
+    if(!localStorage.getItem('bud_migDeposits')){
+      [[17000000,'2026-01'],[20000000,'2026-03']].forEach(([amt,ym])=>{
+        if(!SAVINGS.some(s=>s.type==='예금'&&s.start===ym&&s.monthly===amt))
+          SAVINGS.push({inst:'미등록',type:'예금',subtype:'',monthly:amt,start:ym,maturity:''});
+      });
+      localStorage.setItem('bud_migDeposits','1');
+    }
+  }catch(e){}
 }
 ensureMonths();
 /* 작품 상태: 판매종료(수동) > 출간전(출간일 미도래, 자동) > 판매중(자동) */
